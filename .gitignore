@@ -1,0 +1,15 @@
+# Environment
+.env
+
+# Data directories
+face_db/
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDEs
+.idea/
+.vscode/
