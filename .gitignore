@@ -5,6 +5,11 @@
 face_db/
 logs/
 
+# YOLO / 사전학습 모델 가중치 (용량이 크므로 Git에서 제외)
+models/*.pt
+models/*.weights
+models/*.onnx
+
 # Python
 __pycache__/
 *.pyc

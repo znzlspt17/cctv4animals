@@ -73,6 +73,7 @@ def test_check_duplicate_found(svc):
     repo = MagicMock()
     with patch("server.services.face_service.settings") as mock_settings:
         mock_settings.RECOGNITION_THRESHOLD = 0.40
+        mock_settings.DUPLICATE_THRESHOLD = 0.40
         is_dup, person_id, distance = svc.check_duplicate(emb, repo)
     assert is_dup is True
     assert person_id == 10
@@ -93,6 +94,7 @@ def test_check_duplicate_not_found(svc):
     repo = MagicMock()
     with patch("server.services.face_service.settings") as mock_settings:
         mock_settings.RECOGNITION_THRESHOLD = 0.40
+        mock_settings.DUPLICATE_THRESHOLD = 0.40
         is_dup, person_id, distance = svc.check_duplicate(emb, repo)
     assert is_dup is False
 

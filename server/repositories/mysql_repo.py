@@ -63,6 +63,7 @@ class _PostgresFaceImageRepo(FaceImageRepo):
         person_id: int,
         image_path: str,
         embedding: bytes | None = None,
+        embedding_vec: list | None = None,
         capture_condition: str | None = None,
     ):
         with SessionLocal() as db:
@@ -70,6 +71,7 @@ class _PostgresFaceImageRepo(FaceImageRepo):
                 person_id=person_id,
                 image_path=image_path,
                 embedding=embedding,
+                embedding_vec=embedding_vec,
                 capture_condition=capture_condition,
             )
             db.add(face)
@@ -290,3 +292,7 @@ class PostgresRepository(AbstractRepository):
     @property
     def seq(self) -> _PostgresSeqRepo:
         return self._seq
+
+
+# 하위 호환성 별칭
+MySQLRepository = PostgresRepository

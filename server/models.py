@@ -1,3 +1,4 @@
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -52,6 +53,7 @@ class FaceImage(Base):
     image_path = Column(String(500), nullable=False)
     capture_condition = Column(String(100), nullable=True)
     embedding = Column(LargeBinary, nullable=True)
+    embedding_vec = Column(Vector(512), nullable=True)
     created_at = Column(DateTime, default=func.now())
 
     person = relationship("Person", back_populates="face_images")

@@ -348,11 +348,14 @@ class FaceService:
         cv2.imwrite(image_path, face_crop)
 
         # 5. DB 저장
-        embedding_bytes = embedding_np.astype(np.float32).tobytes()
+        embedding_np32 = embedding_np.astype(np.float32)
+        embedding_bytes = embedding_np32.tobytes()
+        embedding_vec = embedding_np32.flatten().tolist()
         face_record = repo.face_image.create(
             person_id=person_id,
             image_path=image_path,
             embedding=embedding_bytes,
+            embedding_vec=embedding_vec,
             capture_condition=capture_condition,
         )
 

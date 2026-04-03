@@ -25,6 +25,7 @@ class FaceImageRepo(ABC):
         person_id: int,
         image_path: str,
         embedding: bytes | None = None,
+        embedding_vec: list | None = None,
         capture_condition: str | None = None,
     ): ...
 

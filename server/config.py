@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     RECOGNITION_FRAME_SKIP: int = 3
 
     # Recognition Log
-    ENABLE_RECOGNITION_LOG: bool = False
+    ENABLE_RECOGNITION_LOG: bool = True
 
     # Logging
     LOG_LEVEL: str = "INFO"
