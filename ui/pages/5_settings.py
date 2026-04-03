@@ -15,7 +15,14 @@ render_sidebar()
 
 st.title("⚙️ 설정")
 
-API_BASE = st.session_state.get("api_base_url", "http://localhost:8000/api")
+from server.config import settings as _settings
+
+_api_host = (
+    _settings.FASTAPI_HOST if _settings.FASTAPI_HOST != "0.0.0.0" else "localhost"
+)
+_default_api_base = f"http://{_api_host}:{_settings.FASTAPI_PORT}/api"
+
+API_BASE = st.session_state.get("api_base_url", _default_api_base)
 
 st.warning(
     "⚠️ 변경된 설정은 현재 세션에만 적용됩니다. 서버 재시작 시 .env 기본값으로 복원됩니다."
@@ -25,7 +32,7 @@ st.warning(
 st.subheader("🔌 API 서버")
 new_api_base = st.text_input(
     "API Base URL",
-    value=st.session_state.get("api_base_url", "http://localhost:8000/api"),
+    value=st.session_state.get("api_base_url", _default_api_base),
 )
 if new_api_base != st.session_state.get("api_base_url"):
     st.session_state["api_base_url"] = new_api_base

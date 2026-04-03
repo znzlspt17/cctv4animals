@@ -1,7 +1,62 @@
 """바운딩 박스 + 텍스트 오버레이 렌더러."""
 
+import os
+
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+# 한글 지원 폰트 탐색 (Windows 우선, Linux/Mac 대체)
+_FONT_CANDIDATES = [
+    "C:/Windows/Fonts/malgun.ttf",       # Windows 맑은 고딕
+    "C:/Windows/Fonts/malgunbd.ttf",     # Windows 맑은 고딕 Bold
+    "C:/Windows/Fonts/NanumGothic.ttf",
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+]
+_FONT_PATH: str | None = next(
+    (p for p in _FONT_CANDIDATES if os.path.exists(p)), None
+)
+
+
+def _load_pil_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    if _FONT_PATH:
+        try:
+            return ImageFont.truetype(_FONT_PATH, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def _put_text_pil(
+    frame: np.ndarray,
+    text: str,
+    pos: tuple[int, int],
+    font_size: int = 20,
+    text_color: tuple = (255, 255, 255),
+    bg_color: tuple = (0, 0, 0),
+    bg_alpha: float = 0.6,
+) -> np.ndarray:
+    """PIL로 한글 텍스트를 프레임에 렌더링한다."""
+    img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img_pil)
+    font = _load_pil_font(font_size)
+
+    tx, ty = pos
+    bbox = draw.textbbox((tx, ty), text, font=font)
+    pad = 4
+    bg_box = (bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad)
+
+    # 반투명 배경
+    overlay_pil = img_pil.copy()
+    overlay_draw = ImageDraw.Draw(overlay_pil)
+    overlay_draw.rectangle(bg_box, fill=(0, 0, 0))
+    img_pil = Image.blend(img_pil, overlay_pil, alpha=bg_alpha)
+
+    draw = ImageDraw.Draw(img_pil)
+    draw.text((tx, ty), text, font=font, fill=text_color[::-1])  # RGB
+
+    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 
 def draw_results(
@@ -68,37 +123,15 @@ def draw_results(
         else:
             lines.append(f"Unknown ({conf_pct})")
 
-        # 텍스트 렌더링 (반투명 배경 + 흰색 글씨)
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.7
-        thickness = 2
-        line_height = 28
+        # 텍스트 렌더링 (PIL — 한글 지원)
+        font_size = 20
+        line_height = font_size + 8
 
         for i, line_text in enumerate(lines):
             text_y = y - 10 - (len(lines) - 1 - i) * line_height
-            if text_y < 15:
-                text_y = y + h + 20 + i * line_height
+            if text_y < font_size:
+                text_y = y + h + 8 + i * line_height
 
-            (tw, th), _ = cv2.getTextSize(line_text, font, font_scale, thickness)
-            # 반투명 배경
-            overlay = frame.copy()
-            cv2.rectangle(
-                overlay,
-                (x, text_y - th - 4),
-                (x + tw + 6, text_y + 4),
-                (0, 0, 0),
-                cv2.FILLED,
-            )
-            cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
-            # 텍스트
-            cv2.putText(
-                frame,
-                line_text,
-                (x + 3, text_y),
-                font,
-                font_scale,
-                (255, 255, 255),
-                thickness,
-            )
+            frame = _put_text_pil(frame, line_text, (x, text_y), font_size=font_size)
 
     return frame

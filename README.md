@@ -12,15 +12,15 @@
 
 ## 기술 스택
 
-| 영역       | 기술                            |
-| ---------- | ------------------------------- |
-| 언어       | Python 3.12+                    |
-| API 서버   | FastAPI + Uvicorn               |
-| 프론트엔드 | Streamlit                       |
-| 얼굴 인식  | DeepFace (VGG-Face, RetinaFace) |
-| ORM        | SQLAlchemy 2.0                  |
-| DB         | MySQL 8.0 / Redis 7 (선택)      |
-| 설정       | pydantic-settings + .env        |
+| 영역       | 기술                                     |
+| ---------- | ---------------------------------------- |
+| 언어       | Python 3.12+                             |
+| API 서버   | FastAPI + Uvicorn                        |
+| 프론트엔드 | Streamlit                                |
+| 얼굴 인식  | DeepFace (Buffalo_L + ONNX Runtime CUDA) |
+| ORM        | SQLAlchemy 2.0                           |
+| DB         | MySQL 8.0 / Redis 7 (선택)               |
+| 설정       | pydantic-settings + .env                 |
 
 ## 설치
 
@@ -69,7 +69,7 @@ REDIS_PORT=6379
 REDIS_PASSWORD=
 
 # Face Recognition
-DEEPFACE_MODEL=VGG-Face
+DEEPFACE_MODEL=Buffalo_L
 DEEPFACE_DETECTOR=retinaface
 RECOGNITION_THRESHOLD=0.40
 ```
@@ -170,7 +170,7 @@ deepface_live/
 | `REDIS_PORT`                   | `6379`          | Redis 포트                        |
 | `REDIS_PASSWORD`               | (빈 문자열)     | Redis 비밀번호                    |
 | `FACE_DB_PATH`                 | `face_db`       | 얼굴 이미지 저장 경로             |
-| `DEEPFACE_MODEL`               | `VGG-Face`      | DeepFace 인식 모델                |
+| `DEEPFACE_MODEL`               | `Buffalo_L`     | DeepFace 인식 모델 (ONNX GPU)     |
 | `DEEPFACE_DETECTOR`            | `retinaface`    | 등록용 얼굴 검출기                |
 | `DEEPFACE_DETECTOR_REALTIME`   | `retinaface`    | 실시간 검출기                     |
 | `RECOGNITION_THRESHOLD`        | `0.40`          | 인식 임계값 (cosine distance)     |

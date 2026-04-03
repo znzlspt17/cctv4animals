@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # Face Recognition
     FACE_DB_PATH: str = "face_db"
-    DEEPFACE_MODEL: str = "VGG-Face"
+    DEEPFACE_MODEL: str = "ArcFace"
     DEEPFACE_DETECTOR: str = "retinaface"
     DEEPFACE_DETECTOR_REALTIME: str = "retinaface"
     DEEPFACE_DISTANCE_METRIC: str = "cosine"
@@ -40,8 +40,12 @@ class Settings(BaseSettings):
 
     # Recognition
     RECOGNITION_THRESHOLD: float = 0.40
+    DUPLICATE_THRESHOLD: float = 0.25
     ALLOW_FORCE_REGISTER: bool = False
     RECOGNITION_FRAME_SKIP: int = 3
+
+    # Recognition Log
+    ENABLE_RECOGNITION_LOG: bool = False
 
     # Logging
     LOG_LEVEL: str = "INFO"

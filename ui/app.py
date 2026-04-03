@@ -7,6 +7,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 
+from server.config import settings
+
 st.set_page_config(
     page_title="DeepFace Live",
     page_icon="🎭",
@@ -14,9 +16,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# .env의 FASTAPI_HOST / FASTAPI_PORT 로부터 API 기본 URL 구성
+_api_host = settings.FASTAPI_HOST if settings.FASTAPI_HOST != "0.0.0.0" else "localhost"
+_default_api_base = f"http://{_api_host}:{settings.FASTAPI_PORT}/api"
+
 # ── session_state 기본값 초기화 ──
 _defaults = {
-    "api_base_url": "http://localhost:8000/api",
+    "api_base_url": _default_api_base,
     "display_mode": "name",
     "frame_skip": 3,
     "recognition_active": True,

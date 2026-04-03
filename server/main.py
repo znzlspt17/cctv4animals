@@ -20,9 +20,8 @@ async def lifespan(app: FastAPI):
     from server.config import settings
 
     if settings.DB_BACKEND == "mysql":
-        from server.database import Base, engine
-
         import server.models  # noqa: F401 — 모델을 Base.metadata에 등록
+        from server.database import Base, engine
 
         Base.metadata.create_all(bind=engine)
         _ensure_person_seq()
@@ -45,6 +44,7 @@ async def lifespan(app: FastAPI):
 
     face_service.warmup()
     face_service.load_embedding_cache(app.state.repo)
+    face_service.load_alert_cache(app.state.repo)
     app.state.face_service = face_service
 
     logger.info("Server ready.")

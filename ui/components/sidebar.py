@@ -6,7 +6,13 @@ import streamlit as st
 
 def render_sidebar():
     """사이드바: API 연결 상태, 등록 인원 수, 오버레이 옵션."""
-    api_base = st.session_state.get("api_base_url", "http://localhost:8000/api")
+    from server.config import settings
+
+    _api_host = (
+        settings.FASTAPI_HOST if settings.FASTAPI_HOST != "0.0.0.0" else "localhost"
+    )
+    _default_api_base = f"http://{_api_host}:{settings.FASTAPI_PORT}/api"
+    api_base = st.session_state.get("api_base_url", _default_api_base)
 
     with st.sidebar:
         st.header("DeepFace Live")

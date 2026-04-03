@@ -9,12 +9,13 @@ pymysql>=1.1.1
 # Database — Redis
 redis[hiredis]>=5.2.0
 
-# Face Recognition
-tensorflow>=2.16.0,<2.18.0
+# Face Recognition (GPU: ONNX Runtime CUDA)
 deepface>=0.0.93
 opencv-python>=4.10.0
 retina-face>=0.0.17
-numpy>=1.26.4,<2.0
+insightface>=0.7.3
+onnxruntime-gpu>=1.17.0
+numpy>=1.26.4
 
 # Frontend
 streamlit>=1.40.0

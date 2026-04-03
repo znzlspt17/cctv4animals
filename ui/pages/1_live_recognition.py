@@ -51,24 +51,25 @@ class FaceRecognitionProcessor(VideoProcessorBase):
     def __init__(self):
         self._frame_count = 0
         self._last_results: list[dict] = []
+        # 메인 스레드에서 업데이트되는 설정값 (session_state 대신 인스턴스 속성 사용)
+        self.recognition_active: bool = True
+        self.frame_skip: int = 3
+        self.display_mode: str = "name"
+        self.api_base: str = "http://localhost:9000/api"
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
 
-        recognition_active = st.session_state.get("recognition_active", True)
-        frame_skip = st.session_state.get("frame_skip", 3)
-
-        if recognition_active:
+        if self.recognition_active:
             self._frame_count += 1
-            if self._frame_count % frame_skip == 0:
+            if self._frame_count % self.frame_skip == 0:
                 self._last_results = self._call_recognize(img)
 
         # 오버레이 옵션
-        display_mode = st.session_state.get("display_mode", "name")
         overlay_opts = {
             "show_name": True,
-            "show_phone": display_mode in ("name+phone", "all"),
-            "show_address": display_mode in ("name+address", "all"),
+            "show_phone": self.display_mode in ("name+phone", "all"),
+            "show_address": self.display_mode in ("name+address", "all"),
         }
 
         # 결과 오버레이
@@ -79,11 +80,10 @@ class FaceRecognitionProcessor(VideoProcessorBase):
 
     def _call_recognize(self, img: np.ndarray) -> list[dict]:
         """프레임을 JPEG로 인코딩 후 /api/recognize 호출."""
-        api_base = st.session_state.get("api_base_url", "http://localhost:8000/api")
         try:
             _, buffer = cv2.imencode(".jpg", img)
             resp = requests.post(
-                f"{api_base}/recognize",
+                f"{self.api_base}/recognize",
                 files={"file": ("frame.jpg", buffer.tobytes(), "image/jpeg")},
                 timeout=10,
             )
@@ -103,6 +103,13 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
+
+# 메인 스레드에서 processor 속성 업데이트 (session_state → 인스턴스 속성)
+if ctx.video_processor:
+    ctx.video_processor.recognition_active = st.session_state.get("recognition_active", True)
+    ctx.video_processor.frame_skip = st.session_state.get("frame_skip", 3)
+    ctx.video_processor.display_mode = st.session_state.get("display_mode", "name")
+    ctx.video_processor.api_base = st.session_state.get("api_base_url", API_BASE)
 
 st.divider()
 
