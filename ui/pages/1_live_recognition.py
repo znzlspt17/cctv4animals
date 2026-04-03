@@ -109,7 +109,9 @@ ctx = webrtc_streamer(
 
 # 메인 스레드에서 processor 속성 업데이트 (session_state → 인스턴스 속성)
 if ctx.video_processor:
-    ctx.video_processor.recognition_active = st.session_state.get("recognition_active", True)
+    ctx.video_processor.recognition_active = st.session_state.get(
+        "recognition_active", True
+    )
     ctx.video_processor.frame_skip = st.session_state.get("frame_skip", 3)
     ctx.video_processor.display_mode = st.session_state.get("display_mode", "name")
     ctx.video_processor.api_base = st.session_state.get("api_base_url", API_BASE)
