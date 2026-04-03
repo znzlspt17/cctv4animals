@@ -2,20 +2,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # DB Backend
-    DB_BACKEND: str = "mysql"
-
-    # MySQL
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 3306
-    DB_USER: str = "root"
-    DB_PASSWORD: str = "root"
-    DB_NAME: str = "deepface_live"
-
-    # Redis
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_PASSWORD: str = ""
+    # PostgreSQL (원격)
+    DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@100.95.34.69:5555/cctv?sslmode=disable"
 
     # FastAPI / Streamlit
     FASTAPI_HOST: str = "0.0.0.0"

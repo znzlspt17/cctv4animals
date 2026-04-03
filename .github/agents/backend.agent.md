@@ -14,11 +14,10 @@ You are responsible for **Phase B-1, B-2a, B-3 (Step 4~6, 8~11)** of the workflo
 - `server/config.py` — pydantic-settings
 - `server/repositories/base.py` — ABC interfaces (PersonRepo, FaceImageRepo, RecognitionLogRepo, AlertRuleRepo, SeqRepo)
 - `server/repositories/__init__.py` — `get_repository()` factory
-- `server/repositories/mysql_repo.py` — SQLAlchemy implementation
-- `server/repositories/redis_repo.py` — Redis JSON/Search implementation
+- `server/repositories/mysql_repo.py` — SQLAlchemy PostgreSQL implementation (PostgresRepository)
 - `server/models.py` — ORM models (5 tables)
-- `server/database.py` — SQLAlchemy engine/session
-- `server/redis_client.py` — Redis connection
+- `server/database.py` — SQLAlchemy engine/session (psycopg2, sslmode=disable)
+- `server/redis_client.py` — 미사용 스텁 (수정 불필요)
 - `server/schemas.py` — Pydantic request/response schemas
 - `server/main.py` — FastAPI app (lifespan, CORS, error handlers, router registration)
 - `server/routers/person.py` — Person CRUD (5 endpoints)
@@ -33,28 +32,27 @@ You are responsible for **Phase B-1, B-2a, B-3 (Step 4~6, 8~11)** of the workflo
 - DO NOT modify any `tests/**` files — owned by @tester
 - DO NOT modify `.env`, `docker-compose.yml`, `requirements.txt` — owned by @scaffold
 - Service/router layers MUST depend only on `AbstractRepository` — never reference concrete DB code directly
+- DO NOT add Redis or MySQL-specific code — PostgreSQL only
 - `server/routers/recognition.py` (B-3) can only be built AFTER @face-engine completes `face_service.py`
 
 ## Execution Order
 
 ### Part 1: Repository Layer (B-1, sequential)
 
-1. **B-1.3** `server/config.py` — pydantic-settings `Settings` class mapping all `.env` vars including `DB_BACKEND`, registration/detection condition vars
+1. **B-1.3** `server/config.py` — pydantic-settings `Settings` class: `DATABASE_URL` and all face recognition/logging env vars
 2. **B-1.1** `server/repositories/base.py` — 5 ABC interfaces
-3. **B-1.2** `server/repositories/__init__.py` — factory with `DB_BACKEND` branching
+3. **B-1.2** `server/repositories/__init__.py` — factory returning `PostgresRepository()`
 4. **B-1.4** `server/models.py` — 5 ORM tables (Person, FaceImage, RecognitionLog, AlertRule, PersonNameSeq)
-5. **B-1.5** `server/database.py` — SQLAlchemy engine, SessionLocal, get_db, Base
-6. **B-1.6** `server/redis_client.py` — Redis connection factory
-7. **B-1.7** `server/repositories/mysql_repo.py` — MySQLRepository implementing all ABCs
-8. **B-1.8** `server/repositories/redis_repo.py` — RedisRepository with JSON/Search/VSS
-9. **B-1.9** `server/schemas.py` — Pydantic models (shared across DB backends)
+5. **B-1.5** `server/database.py` — SQLAlchemy engine (psycopg2, connect_args sslmode=disable), SessionLocal, get_db, Base
+6. **B-1.7** `server/repositories/mysql_repo.py` — PostgresRepository implementing all ABCs
+7. **B-1.9** `server/schemas.py` — Pydantic models
 
 ### Part 2: API (B-2a, after B-1)
 
-10. **B-2a.1** `server/main.py` — FastAPI app setup (lifespan with DB init + model warmup, CORS, global error handlers, `app.state.repo`)
-11. **B-2a.2** `server/routers/person.py` — POST/GET/GET{id}/PUT/DELETE persons
-12. **B-2a.3** `server/routers/log.py` — GET logs, GET stats, DELETE cleanup + dedup logic
-13. **B-2a.4** `server/services/alert_service.py` — check active rules for person
+8. **B-2a.1** `server/main.py` — FastAPI app setup (lifespan with DB init + model warmup, CORS, global error handlers, `app.state.repo`)
+9. **B-2a.2** `server/routers/person.py` — POST/GET/GET{id}/PUT/DELETE persons
+10. **B-2a.3** `server/routers/log.py` — GET logs, GET stats, DELETE cleanup + dedup logic
+11. **B-2a.4** `server/services/alert_service.py` — check active rules for person
 
 ### Part 3: Recognition Router (B-3, after @face-engine)
 
@@ -71,20 +69,8 @@ You are responsible for **Phase B-1, B-2a, B-3 (Step 4~6, 8~11)** of the workflo
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    # DB 선택
-    DB_BACKEND: str = "mysql"  # "mysql" | "redis"
-
-    # MySQL
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 3306
-    DB_USER: str = "root"
-    DB_PASSWORD: str = "root"
-    DB_NAME: str = "deepface_live"
-
-    # Redis
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_PASSWORD: str = ""
+    # PostgreSQL (원격)
+    DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@100.95.34.69:5555/cctv?sslmode=disable"
 
     # FastAPI / Streamlit
     FASTAPI_HOST: str = "0.0.0.0"
@@ -93,7 +79,7 @@ class Settings(BaseSettings):
 
     # DeepFace
     FACE_DB_PATH: str = "face_db"
-    DEEPFACE_MODEL: str = "VGG-Face"
+    DEEPFACE_MODEL: str = "ArcFace"
     DEEPFACE_DETECTOR: str = "retinaface"
     DEEPFACE_DETECTOR_REALTIME: str = "retinaface"
     DEEPFACE_DISTANCE_METRIC: str = "cosine"
@@ -174,11 +160,11 @@ class SeqRepo(ABC):
 
 ### Repository Pattern
 
-- `DB_BACKEND=mysql` → MySQLRepository (SQLAlchemy ORM)
-- `DB_BACKEND=redis` → RedisRepository (RedisJSON + RediSearch VSS)
-- Factory: `get_repository()` in `server/repositories/__init__.py`
+- PostgreSQL only → `PostgresRepository` (SQLAlchemy ORM, psycopg2-binary)
+- Factory: `get_repository()` in `server/repositories/__init__.py` returns `PostgresRepository()`
+- File `mysql_repo.py` kept for naming continuity
 
-### MySQL ORM 모델 (models.py) — 관계 및 인덱스
+### PostgreSQL ORM 모델 (models.py) — 관계 및 인덱스
 
 ```python
 class Person(Base):
@@ -188,7 +174,7 @@ class Person(Base):
     display_name = Column(String(200), nullable=True)
     phone = Column(String(50), nullable=True)
     address = Column(Text, nullable=True)
-    extra_info = Column(JSON, nullable=True)
+    extra_info = Column(JSON, nullable=True)  # PostgreSQL: JSONB 자동 매핑
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -203,7 +189,7 @@ class FaceImage(Base):
     person_id = Column(Integer, ForeignKey("persons.id", ondelete="CASCADE"), nullable=False, index=True)
     image_path = Column(String(500), nullable=False)
     capture_condition = Column(String(100), nullable=True)
-    embedding = Column(LargeBinary, nullable=True)  # numpy bytes
+    embedding = Column(LargeBinary, nullable=True)  # BYTEA: numpy pickle 직렬화, FAISS 캐시용
     created_at = Column(DateTime, default=func.now())
 
     person = relationship("Person", back_populates="face_images")
@@ -370,24 +356,21 @@ async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("Starting DeepFace Live server...")
 
-    # 2) DB 초기화 (DB_BACKEND 분기)
-    if settings.DB_BACKEND == "mysql":
-        Base.metadata.create_all(bind=engine)     # 테이블 자동 생성
-        ensure_person_seq()                         # person_name_seq 초기 행 보장
-    else:
-        await init_redis_indexes()                  # FT.CREATE 인덱스 생성
+    # 2) DB 초기화 — PostgreSQL
+    import server.models  # noqa
+    from server.database import Base, engine
+    Base.metadata.create_all(bind=engine)  # 테이블 자동 생성
+    _ensure_person_seq()                   # person_name_seq 초기 행 보장
 
-    # 3) Repository 팩토리로 생성 → app.state에 저장
+    # 3) Repository 팩토리 → app.state
     app.state.repo = get_repository()
 
-    # 4) DeepFace 모델 워밍업 (첫 요청 지연 방지)
-    from server.services.face_service import FaceService
-    face_service = FaceService(app.state.repo)
-    face_service.warmup()                           # dummy DeepFace.represent() 1회
+    # 4) FaceService (임베딩 캐시 + FAISS 인덱스 빌드)
+    from server.services.face_service import face_service
+    face_service.warmup()
+    face_service.load_embedding_cache(app.state.repo)
+    face_service.load_alert_cache(app.state.repo)
     app.state.face_service = face_service
-
-    # 5) 임베딩 캐시 로드
-    face_service.load_embedding_cache()
 
     logger.info("Server ready.")
     yield

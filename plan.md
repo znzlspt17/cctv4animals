@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-웹캠 기반 실시간 얼굴 인식/등록/검색 시스템. FastAPI 백엔드 + Streamlit 프런트엔드 구조로, DeepFace 라이브러리를 활용하여 얼굴을 인식하고 DB(Docker)에 메타데이터를 저장한다. **Repository Pattern**을 적용하여 DB 백엔드를 `.env` 설정 하나로 MySQL ↔ Redis 간 교체할 수 있다. 이미지 원본은 로컬 파일시스템에 저장하고 DB에는 경로(링크)만 기록.
+웹캠 기반 실시간 얼굴 인식/등록/검색 시스템. FastAPI 백엔드 + Streamlit 프런트엔드 구조로, DeepFace 라이브러리를 활용하여 얼굴을 인식하고 원격 PostgreSQL DB에 메타데이터를 저장한다. **Repository Pattern**을 적용하여 DB 계층을 추상화한다. 이미지 원본은 로컬 파일시스템에 저장하고 DB에는 경로(링크)만 기록. 임베딩 검색은 **FAISS IndexFlatIP** (L2 정규화 후 내적 = cosine similarity) 적용.
 
 ---
 
@@ -18,9 +18,10 @@
 ## Architecture
 
 ```
-[Streamlit UI] ←→ [FastAPI Server] ←→ [Repository Layer] ←→ [MySQL | Redis (Docker)]
-                        ↕                     ↑
-                   [DeepFace Engine]       DB_BACKEND 환경변수로 선택
+[Streamlit UI] ←→ [FastAPI Server] ←→ [Repository Layer] ←→ [PostgreSQL 17.x (원격 Docker)]
+                        ↕
+                   [DeepFace Engine]
+                   [FAISS IndexFlatIP]
                         ↕
                 [Local Filesystem (face images)]
 ```
@@ -30,13 +31,11 @@
 ```
 server/repositories/
 ├── base.py           # ABC: PersonRepo, FaceImageRepo, LogRepo, AlertRepo, SeqRepo
-├── mysql_repo.py     # SQLAlchemy 기반 구현
-├── redis_repo.py     # redis-py / Redis JSON 기반 구현
-└── __init__.py       # get_repository() 팩토리 — DB_BACKEND 값에 따라 반환
+├── mysql_repo.py     # SQLAlchemy + PostgreSQL 구현 (PostgresRepository)
+└── __init__.py       # get_repository() 팩토리 — PostgresRepository 반환
 ```
 
-- **`DB_BACKEND=mysql`** (기본): SQLAlchemy ORM → MySQL 8.x
-- **`DB_BACKEND=redis`**: Redis Stack (JSON + Search) 활용
+- SQLAlchemy ORM → PostgreSQL (psycopg2-binary, sslmode=disable)
 - 서비스/라우터 계층은 `AbstractRepository`만 의존 → 구체 DB 코드를 직접 참조하지 않음
 
 ---
@@ -96,7 +95,7 @@ server/repositories/
      a) 감지 신뢰도 (D2) — < FACE_MIN_CONFIDENCE_REALTIME → 해당 얼굴 스킵
      b) 얼굴 크기 (D3) — < FACE_MIN_SIZE_REALTIME → 해당 얼굴 스킵
      c) 임베딩 추출 — 실패 → 해당 얼굴 스킵
-     d) DB 매칭 (D5) — 매칭 → 인식 결과 + 오버레이, 미매칭 → "Unknown" 표시
+  - DB 매칭 (D5) — FAISS `index.search()` → threshold 이내면 인식 성공, 초과면 "Unknown"
      e) 로그 중복 억제 (D6) — 이미 기록된 인물이면 로그 스킵
      f) 알림 체크 — 매칭된 인물의 활성 alert_rule → st.toast()
 ```
@@ -142,22 +141,21 @@ deepface_live/
 ├── .venv/                      # Python 3.12 가상환경 (Git 제외)
 ├── .env                        # 환경변수 (포트, DB 연결 등)
 ├── .env.example                # 환경변수 템플릿
-├── docker-compose.yml          # MySQL 컨테이너 정의
+├── docker-compose.yml          # 로장리 (원격 PostgreSQL 사용)
 ├── requirements.txt            # Python 의존성
 ├── idea.txt                    # (기존)
 ├── server/
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI 앱 엔트리포인트
 │   ├── config.py               # .env 로딩 (pydantic-settings)
-│   ├── database.py             # SQLAlchemy 엔진/세션 설정 (MySQL 전용)
-│   ├── redis_client.py         # Redis 연결 관리 (Redis 전용)
-│   ├── models.py               # ORM 모델 — MySQL 전용 (Person, FaceImage, …)
+│   ├── database.py             # SQLAlchemy 엔진/세션 설정 (PostgreSQL)
+│   ├── redis_client.py         # 스텁 (미사용 — PostgreSQL 전환으로 Redis 제거됨)
+│   ├── models.py               # ORM 모델 — PostgreSQL 테이블 (Person, FaceImage, …)
 │   ├── schemas.py              # Pydantic request/response 스키마 (공통)
 │   ├── repositories/
 │   │   ├── __init__.py         # get_repository() 팩토리 함수
 │   │   ├── base.py             # ABC: PersonRepo, FaceImageRepo, LogRepo, …
-│   │   ├── mysql_repo.py       # SQLAlchemy 구현
-│   │   └── redis_repo.py       # Redis JSON/Search 구현
+│   │   ├── mysql_repo.py       # PostgreSQL 구현 (PostgresRepository)
 │   ├── routers/
 │   │   ├── __init__.py
 │   │   ├── person.py           # 인물 CRUD API
@@ -192,14 +190,13 @@ deepface_live/
 
 ### Step 1b. 가상환경 구성
 
-Python 3.12 기반 venv를 생성하고 의존성을 설치한다.
+Python 3.12 기반 venv를 생성하고 의존성을 설치한다 (`uv` 사용 권장).
 
 #### 실행 순서
 
-1. `python -m venv .venv` — 가상환경 생성
+1. `uv venv .venv --python 3.12` — 가상환경 생성
 2. `.venv\Scripts\activate` (Windows) / `source .venv/bin/activate` (Linux/macOS) — 활성화
-3. `pip install --upgrade pip` — pip 최신화
-4. `pip install -r requirements.txt` — 전체 의존성 설치
+3. `uv pip install -r requirements.txt` — 전체 의존성 설치
 
 #### 검증
 
@@ -217,9 +214,7 @@ python -c "import deepface; print(deepface.__version__)"   # DeepFace 로드 확
 
 ### Step 2. 환경 설정 파일 (.env)
 
-- `DB_BACKEND` (기본: `mysql`. 옵션: `mysql` | `redis`)
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (MySQL 전용)
-- `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` (Redis 전용, DB_BACKEND=redis 시 사용)
+- `DATABASE_URL` (`postgresql+psycopg2://postgres:postgres@100.95.34.69:5555/cctv?sslmode=disable`)
 - `FASTAPI_HOST`, `FASTAPI_PORT`
 - `STREAMLIT_PORT`
 - `FACE_DB_PATH` (얼굴 이미지 저장 디렉토리)
@@ -290,21 +285,13 @@ def setup_logging():
 | `ERROR`    | 에러 발생 (복구 가능) | DB 연결 재시도, 이미지 저장 실패, API 예외      |
 | `CRITICAL` | 치명적 오류           | 모델 로드 실패, DB 완전 단절                    |
 
-### Step 3. Docker Compose (MySQL / Redis)
+### Step 3. Docker Compose
 
-- **MySQL 프로필** (`DB_BACKEND=mysql`):
-  - MySQL 8.x 컨테이너
-  - 볼륨 마운트로 데이터 영속화
-  - `init.sql`로 DB 및 시퀀스 초기 생성
-- **Redis 프로필** (`DB_BACKEND=redis`):
-  - Redis Stack 컨테이너 (`redis/redis-stack` 이미지 — JSON + Search 모듈 포함)
-  - 볼륨 마운트로 데이터 영속화
-  - 포트: 6379 (Redis), 8001 (RedisInsight UI)
-- docker-compose `profiles`로 분리하여 필요한 컨테이너만 기동:
-  ```bash
-  docker compose --profile mysql up -d   # MySQL만
-  docker compose --profile redis up -d   # Redis만
-  ```
+- **원격 PostgreSQL 사용**: `100.95.34.69:5555` (DB: cctv) — 로컬 Docker 컨테이너 불필요
+- `docker-compose.yml`은 빈 상태 (`services: {}`) 유지
+- 앱(FastAPI + Streamlit)은 로컬 환경에서 직접 실행
+- PostgreSQL 테이블은 SQLAlchemy `Base.metadata.create_all()`로 자동 생성 (서버 시작 시)
+- `init.sql`: pgvector 확장 활성화 SQL (원격 DB에 `postgresql-17-pgvector` OS 설치 후 실행)
 
 ---
 
@@ -361,56 +348,52 @@ class SeqRepo(ABC):
 #### 4-B. 팩토리 함수 (`server/repositories/__init__.py`)
 
 ```python
-from server.config import settings
+from server.repositories.base import AbstractRepository
+from server.repositories.mysql_repo import PostgresRepository
 
-def get_repository():
-    if settings.DB_BACKEND == "redis":
-        from server.repositories.redis_repo import RedisRepository
-        return RedisRepository()
-    else:  # "mysql" (default)
-        from server.repositories.mysql_repo import MySQLRepository
-        return MySQLRepository()
+def get_repository() -> AbstractRepository:
+    return PostgresRepository()
 ```
 
 라우터/서비스에서는 `get_repository()`로 주입받아 사용. 구체 DB 코드 직접 참조 금지.
 
-#### 4-C. MySQL 테이블 설계
+#### 4-C. PostgreSQL 테이블 설계
 
 **persons 테이블** (인물 메타데이터)
 | Column | Type | Description |
 |---|---|---|
-| id | INT AUTO_INCREMENT PK | 고유 ID |
+| id | SERIAL PK | 고유 ID |
 | name | VARCHAR(100) UNIQUE | 자동 생성 이름 (person1, person2...) |
 | display_name | VARCHAR(200) | 사용자 지정 표시 이름 (nullable) |
 | phone | VARCHAR(50) | 전화번호 (optional) |
 | address | TEXT | 주소 (optional) |
-| extra_info | JSON | 추가 정보 (유연한 확장) |
-| created_at | DATETIME | 등록일시 |
-| updated_at | DATETIME | 수정일시 |
+| extra_info | JSONB | 추가 정보 (유연한 확장, GIN 인덱스 지원) |
+| created_at | TIMESTAMP | 등록일시 |
+| updated_at | TIMESTAMP | 수정일시 |
 
 **face_images 테이블** (얼굴 이미지 — 다양한 각도/조명)
 | Column | Type | Description |
 |---|---|---|
-| id | INT AUTO_INCREMENT PK | 고유 ID |
+| id | SERIAL PK | 고유 ID |
 | person_id | INT FK → persons.id | 소속 인물 |
 | image_path | VARCHAR(500) | 로컬 파일 경로 |
 | capture_condition | VARCHAR(100) | 촬영 조건 (정면, 좌측, 우측, 밝음, 어두움 등) |
-| embedding | BLOB | 얼굴 임베딩 벡터 (캐시용) |
-| created_at | DATETIME | 촬영일시 |
+| embedding | BYTEA | 얼굴 임베딩 벡터 (pickle 직렬화, FAISS 캐시용) |
+| created_at | TIMESTAMP | 촬영일시 |
 
 **recognition_logs 테이블** (인식 로그)
 | Column | Type | Description |
 |---|---|---|
-| id | BIGINT AUTO_INCREMENT PK | 고유 ID |
+| id | BIGSERIAL PK | 고유 ID |
 | person_id | INT FK → persons.id (nullable) | 인식된 인물 (미인식 시 NULL) |
-| confidence | FLOAT | 유사도 점수 |
+| confidence | DOUBLE PRECISION | 유사도 점수 |
 | snapshot_path | VARCHAR(500) | 스냅샷 이미지 경로 |
-| recognized_at | DATETIME | 인식 시각 |
+| recognized_at | TIMESTAMP | 인식 시각 |
 
 **alert_rules 테이블** (알림 규칙)
 | Column | Type | Description |
 |---|---|---|
-| id | INT AUTO_INCREMENT PK | 고유 ID |
+| id | SERIAL PK | 고유 ID |
 | person_id | INT FK → persons.id | 대상 인물 |
 | alert_type | VARCHAR(50) | 알림 유형 (toast) |
 | message | TEXT | 알림 메시지 |
@@ -422,25 +405,22 @@ def get_repository():
 | id | INT PK (항상 1) | 단일 행 |
 | next_val | INT | 다음 person 번호 |
 
-#### 4-D. Redis 데이터 구조 (`DB_BACKEND=redis`)
+#### 4-D. 벡터 검색 — FAISS
 
-- **persons** → Redis JSON key `person:{id}` + RediSearch 인덱스
-- **face_images** → Redis JSON key `face:{id}` + embedding 필드 (VECTOR 인덱스)
-- **recognition_logs** → Redis JSON key `log:{id}` + TTL로 자동 만료 (LOG_RETENTION_DAYS)
-- **alert_rules** → Redis JSON key `alert:{id}`
-- **시퀀스** → `INCR person_seq` 원자적 증가
-- 벡터 검색: RediSearch VSS (`FLAT` 인덱스, cosine distance) — numpy 브루트포스 대신 Redis 자체 벡터 검색 사용
+- **FAISS IndexFlatIP**: L2 정규화 후 내적 연산 = cosine similarity
+- 메모리 인 캐시 (`_faiss_index`, `_embedding_dim`): 서버 시작 시 DB 임베딩 로드 후 빌드
+- 증분 갱신: 등록 시 `index.add()`, 삭제 시 전체 재빌드 (`_rebuild_faiss_index`)
+- `search_face()` → `index.search(vec, k=1)` (단일 최근접 이웃)
+- `check_duplicate()` → exclude_person_id 없으면 FAISS, 있으면 numpy fallback
+- Docker 배포 시: `faiss-gpu` (CUDA) 사용. Windows 개발환경: `faiss-cpu`
 
 ### Step 5. 구현체 작성
 
-- **MySQL 구현** (`server/repositories/mysql_repo.py`):
-  - `server/models.py`에 5개 테이블 ORM 매핑
-  - `server/database.py`에 엔진, 세션 팩토리, 테이블 자동 생성 로직
-  - `MySQLRepository` 클래스에서 SQLAlchemy Session 사용
-- **Redis 구현** (`server/repositories/redis_repo.py`):
-  - `server/redis_client.py`에 Redis 연결 팩토리
-  - `RedisRepository` 클래스에서 redis-py + RedisJSON + RediSearch 사용
-  - 벡터 검색은 RediSearch VSS 모듈 활용
+- **PostgreSQL 구현** (`server/repositories/mysql_repo.py` → `PostgresRepository`):
+  - `server/models.py`에 5개 테이블 ORM 매핑 (SQLAlchemy 2.0)
+  - `server/database.py`에 엔진(`psycopg2`, `sslmode=disable`), 세션 팩토리, `Base`
+  - `PostgresRepository` 클래스에서 SQLAlchemy Session 사용
+  - 파일명은 하위호환 유지를 위해 `mysql_repo.py` 그대로 사용
 
 ---
 
@@ -451,9 +431,7 @@ def get_repository():
 - **로깅 초기화**: lifespan startup 최초에 `logger.py`의 `setup_logging()` 호출 → 앱 전체 로거 구성
 - CORS 미들웨어 (Streamlit origin 허용)
 - 라우터 등록
-- **lifespan startup**: `DB_BACKEND` 값에 따라 초기화 분기
-  - `mysql`: SQLAlchemy `Base.metadata.create_all()` → 테이블 자동 생성
-  - `redis`: Redis 연결 + RediSearch 인덱스 생성 (`FT.CREATE`)
+- **lifespan startup**: SQLAlchemy `Base.metadata.create_all()` → 테이블 자동 생성 (PostgreSQL)
 - `get_repository()` 팩토리로 생성된 레포지토리를 `app.state.repo`에 저장 → 라우터에서 의존성 주입
 - **모델 워밍업**: lifespan startup에서 더미 이미지로 `DeepFace.represent()` 1회 호출하여 RetinaFace + VGG-Face 모델을 미리 메모리에 로딩 (첫 요청 지연 방지)
 - **글로벌 에러 핸들러**: 얼굴 미감지 예외(`ValueError`) → 400 응답, DB 연결 실패 → 503 응답
@@ -487,11 +465,9 @@ def get_repository():
   - DeepFace.represent()로 임베딩 추출
   - **얼굴 미감지 시 빈 결과 반환** (에러 발생하지 않음 — 실시간 인식에서 팝업 폭탄 방지)
   - **`validate_detection_frame()` 으로 품질 미달 얼굴 필터링 후 매칭 수행**
-  - DB의 모든 임베딩과 numpy 기반 cosine distance 계산 (브루트포스)
-  - `face_images.person_id` 인덱스 활용하여 인물별 그룹 조회 최적화
+  - **FAISS IndexFlatIP** (`index.search(vec, k=1)`)로 최근접 임베딩 탐색
   - threshold 이내의 가장 유사한 person 반환 (D5)
   - **다중 얼굴: 프레임 내 모든 유효 얼굴 각각 매칭 결과 리스트 반환** (D7)
-  - ※ 향후 인원 수 증가 시 FAISS 벡터 인덱스 도입 고려
 
 - `check_duplicate(embedding)`:
   - 기존 등록된 모든 임베딩과의 최소 거리 계산
@@ -670,7 +646,7 @@ def check_duplicate(new_embedding: list[float], db: Session) -> tuple[bool, Pers
 - 인식 threshold 조정 (슬라이더)
 - 오버레이 표시 옵션 (이름, 전화번호, 주소 등 토글)
 - DB 연결 상태 확인
-- 현재 DB 백엔드 표시 (`DB_BACKEND` 값)
+- PostgreSQL 연결 상태 표시 (`DATABASE_URL` 접속 확인)
 - 로그 레벨 설정
 
 ---
@@ -698,19 +674,18 @@ def check_duplicate(new_embedding: list[float], db: Session) -> tuple[bool, Pers
 | ----------------------------------- | --------------------------------- |
 | `.gitignore`                        | Git 제외 규칙                     |
 | `.env` / `.env.example`             | 환경변수 설정                     |
-| `docker-compose.yml`                | MySQL + Redis 컨테이너 (profiles) |
+| `docker-compose.yml`                | 빈 파일 (원격 PostgreSQL 사용)    |
 | `requirements.txt`                  | Python 의존성                     |
 | `server/main.py`                    | FastAPI 엔트리포인트              |
 | `logger.py`                         | 로깅 설정 (레벨/포맷/핸들러)      |
 | `server/config.py`                  | pydantic-settings 기반 설정 로딩  |
-| `server/database.py`                | SQLAlchemy 엔진/세션 (MySQL)      |
-| `server/redis_client.py`            | Redis 연결 관리 (Redis)           |
-| `server/models.py`                  | ORM 모델 (MySQL 전용)             |
+| `server/database.py`                | SQLAlchemy 엔진/세션 (PostgreSQL) |
+| `server/redis_client.py`            | 미사용 스텁 (Redis 제거됨)        |
+| `server/models.py`                  | ORM 모델 (PostgreSQL)             |
 | `server/schemas.py`                 | Pydantic 스키마 (공통)            |
 | `server/repositories/__init__.py`   | Repository 팩토리 함수            |
 | `server/repositories/base.py`       | 추상 Repository 인터페이스        |
-| `server/repositories/mysql_repo.py` | MySQL/SQLAlchemy 구현체           |
-| `server/repositories/redis_repo.py` | Redis JSON/Search 구현체          |
+| `server/repositories/mysql_repo.py` | PostgreSQL/SQLAlchemy 구현체      |
 | `server/routers/person.py`          | 인물 CRUD 라우터                  |
 | `server/routers/recognition.py`     | 얼굴 인식/등록 라우터             |
 | `server/routers/log.py`             | 로그 라우터                       |
@@ -729,79 +704,82 @@ def check_duplicate(new_embedding: list[float], db: Session) -> tuple[bool, Pers
 
 ## Verification
 
-1. `docker compose --profile mysql up -d` 또는 `--profile redis` 로 DB 기동 → 연결 확인
-2. `uvicorn server.main:app`으로 FastAPI 시작 → Swagger UI(`/docs`)에서 API 테스트
+1. 원격 PostgreSQL 연결 확인: `python -c "from server.database import engine; engine.connect(); print('OK')"`
+2. `.venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload` → Swagger UI(`/docs`) 확인
 3. `pytest tests/` 실행 → 전체 테스트 통과 확인
-4. `streamlit run ui/app.py`로 UI 시작 → 웹캠 인식, 등록, 로그 조회 확인
+4. `.venv\Scripts\python.exe -m streamlit run ui/app.py` → 웹캠 인식, 등록, 로그 조회 확인
 5. 동일 얼굴 중복 등록 시 409 에러 반환 확인
 6. 다중 각도 이미지 등록 후 인식 정확도 향상 확인
 7. 알림 규칙 설정 후 해당 인물 감지 시 토스트 팝업 확인
 
 ## Decisions
 
-- **DB**: Repository Pattern으로 추상화. `DB_BACKEND` 환경변수로 MySQL 8.x ↔ Redis Stack 교체 가능 (기본: mysql)
+- **DB**: 원격 PostgreSQL 17.x (`100.95.34.69:5555`, DB: cctv). Repository Pattern으로 추상화
 - **이미지 저장**: 로컬 파일시스템 (`face_db/` 디렉토리), DB에는 경로만 저장
 - **알림**: Streamlit `st.toast()` 팝업
-- **배포**: DB만 Docker, 앱(FastAPI + Streamlit)은 로컬 실행
-- **이름 시퀀스**: 별도 테이블 `person_name_seq`로 관리 (동시성 안전)
-- **추가 정보**: `extra_info` JSON 컬럼으로 유연한 확장 지원
+- **배포**: PostgreSQL은 원격 Docker, 앱(FastAPI + Streamlit)은 로컬 실행
+- **이름 시퀀스**: 별도 테이블 `person_name_seq`로 관리 (`SELECT FOR UPDATE` 동시성 안전)
+- **추가 정보**: `extra_info` JSONB 컬럼으로 유연한 확장 지원
 - **Face Detector**: RetinaFace (등록/검색 기본). 5-point landmark 기반 정렬로 임베딩 품질 향상. 실시간 인식은 `DEEPFACE_DETECTOR_REALTIME` 설정으로 분리 가능 (GPU 없으면 ssd 권장, 프레임 스킵 전략 병행)
 - **실시간 스트리밍**: `streamlit-webrtc` 사용 (브라우저 웹캠 → 서버 프레임 전송). 별도 WebRTC 시그널링 서버 구축은 하지 않음
-- **임베딩 검색**: MySQL 모드는 numpy 브루트포스, Redis 모드는 RediSearch VSS 벡터 검색. 향후 FAISS 도입 여지 확보
-- **로그 관리**: TTL 기반 자동 정리 + 동일 인물 연속 감지 중복 억제
+- **임베딩 검색**: FAISS IndexFlatIP (L2 정규화 + 내적 = cosine similarity). 서버 시작 시 메모리 캐시 빌드. GPU 환경: `faiss-gpu`
+- **로그 관리**: `LOG_RETENTION_DAYS` 기반 정리 + 동일 인물 연속 감지 중복 억제 (`LOG_DEDUP_SECONDS`)
 - **에러 핸들링**: 등록 시 얼굴 미감지 → 400 에러, 실시간 인식 시 → 조용히 스킵
 - **Scope 제외**: 클라우드 배포, 모바일 UI, 외부 WebRTC 시그널링 서버
 
 ## Dependencies (requirements.txt) — Python 3.12
 
-> tensorflow는 deepface의 암묵적 의존성이므로 명시적으로 핀하여 호환성을 보장한다.
-> numpy는 tensorflow 2.16과의 호환을 위해 `<2.0` 상한을 둔다.
+> `uv pip install -r requirements.txt` 으로 설치.
 
 ```txt
-# ── Core ──
+# Core
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 
-# ── Database: MySQL ──
+# Database — PostgreSQL
 sqlalchemy>=2.0.36
-pymysql>=1.1.1
+psycopg2-binary>=2.9.9
+pgvector>=0.3.0          # pgvector SQLAlchemy 연동 (PostgreSQL 확장 필요)
 
-# ── Database: Redis ──
-redis[hiredis]>=5.2.0
+# Vector Search
+faiss-cpu>=1.7.4         # Windows 개발환경용 (Docker 배포시 faiss-gpu 사용)
 
-# ── Face Recognition ──
-tensorflow>=2.16.0,<2.18.0
+# Face Recognition
 deepface>=0.0.93
+tf-keras>=2.16.0         # TensorFlow 2.21+ + RetinaFace 호환 필수
 opencv-python>=4.10.0
 retina-face>=0.0.17
-numpy>=1.26.4,<2.0
+insightface>=0.7.3
+onnxruntime-gpu>=1.17.0
+numpy>=1.26.4
 
-# ── Frontend ──
+# Frontend
 streamlit>=1.40.0
 streamlit-webrtc>=0.47.0
 
-# ── Config / HTTP ──
+# Config / HTTP
 pydantic-settings>=2.6.0
 python-dotenv>=1.0.1
+python-multipart>=0.0.9
 httpx>=0.28.0
 
-# ── Utilities ──
+# Utilities
 Pillow>=11.0.0
 plotly>=5.24.0
 
-# ── Testing ──
+# Testing
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
 ```
 
-| 패키지           | Python 3.12 호환 최소 버전 | 비고                                  |
-| ---------------- | -------------------------- | ------------------------------------- |
-| tensorflow       | 2.16+                      | deepface 암묵적 의존, 3.12 첫 지원    |
-| deepface         | 0.0.93+                    | tensorflow 2.16+ 필요                 |
-| numpy            | 1.26.4+                    | 2.x는 tensorflow와 충돌 → `<2.0` 상한 |
-| retina-face      | 0.0.17+                    | tensorflow 의존                       |
-| opencv-python    | 4.10+                      | 3.12 wheel 제공                       |
-| streamlit-webrtc | 0.47+                      | 3.12 지원                             |
+| 패키지           | 비고                                          |
+| ---------------- | --------------------------------------------- |
+| psycopg2-binary  | PostgreSQL driver, `sslmode=disable` 필요     |
+| pgvector         | pgvector 확장 SQLAlchemy 연동 (선택적)        |
+| faiss-cpu        | 개발환경. Docker 배포 시 `faiss-gpu` 교체     |
+| tf-keras         | TF 2.21+에서 RetinaFace 필수 의존             |
+| deepface         | ArcFace 모델 사용 (512-dim embedding)         |
+| onnxruntime-gpu  | InsightFace GPU 추론                          |
 | 나머지           | 최신 안정                  | 3.12 문제 없음                        |
 
 ---

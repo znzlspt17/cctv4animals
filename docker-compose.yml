@@ -1,35 +1,4 @@
-services:
-  mysql:
-    image: mysql:8.0
-    profiles: ["mysql"]
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: deepface_live
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis/redis-stack:latest
-    profiles: ["redis"]
-    ports:
-      - "6379:6379"
-      - "8001:8001"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  mysql_data:
-  redis_data:
+# 로컬 DB 서비스 없음 — 원격 PostgreSQL 사용
+# DATABASE_URL 을 .env 에 설정하세요
+# 예) DATABASE_URL=postgresql+psycopg2://user:password@host:5432/deepface_live
+services: {}

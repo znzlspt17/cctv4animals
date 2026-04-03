@@ -1,12 +1,2 @@
-import redis
-
-from server.config import settings
-
-
-def get_redis_client() -> redis.Redis:
-    return redis.Redis(
-        host=settings.REDIS_HOST,
-        port=settings.REDIS_PORT,
-        password=settings.REDIS_PASSWORD or None,
-        decode_responses=True,
-    )
+# Redis는 제거되었습니다. 원격 PostgreSQL을 사용합니다.
+# 이 파일은 하위 호환성을 위해 유지되나 사용되지 않습니다.

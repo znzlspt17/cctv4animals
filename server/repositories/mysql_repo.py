@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # ── Sub-repo implementations ──
 
 
-class _MySQLPersonRepo(PersonRepo):
+class _PostgresPersonRepo(PersonRepo):
     def create(self, name: str, **kwargs):
         with SessionLocal() as db:
             person = Person(name=name, **kwargs)
@@ -57,7 +57,7 @@ class _MySQLPersonRepo(PersonRepo):
                 db.commit()
 
 
-class _MySQLFaceImageRepo(FaceImageRepo):
+class _PostgresFaceImageRepo(FaceImageRepo):
     def create(
         self,
         person_id: int,
@@ -98,7 +98,7 @@ class _MySQLFaceImageRepo(FaceImageRepo):
             db.commit()
 
 
-class _MySQLRecognitionLogRepo(RecognitionLogRepo):
+class _PostgresRecognitionLogRepo(RecognitionLogRepo):
     def create(
         self,
         person_id: int | None,
@@ -186,7 +186,7 @@ class _MySQLRecognitionLogRepo(RecognitionLogRepo):
             return exists is not None
 
 
-class _MySQLAlertRuleRepo(AlertRuleRepo):
+class _PostgresAlertRuleRepo(AlertRuleRepo):
     def get_active_rules(self, person_id: int):
         with SessionLocal() as db:
             return (
@@ -241,7 +241,7 @@ class _MySQLAlertRuleRepo(AlertRuleRepo):
                 db.commit()
 
 
-class _MySQLSeqRepo(SeqRepo):
+class _PostgresSeqRepo(SeqRepo):
     def next_person_number(self) -> int:
         with SessionLocal() as db:
             row = (
@@ -263,30 +263,30 @@ class _MySQLSeqRepo(SeqRepo):
 # ── Composite Repository ──
 
 
-class MySQLRepository(AbstractRepository):
+class PostgresRepository(AbstractRepository):
     def __init__(self):
-        self._person = _MySQLPersonRepo()
-        self._face_image = _MySQLFaceImageRepo()
-        self._recognition_log = _MySQLRecognitionLogRepo()
-        self._alert_rule = _MySQLAlertRuleRepo()
-        self._seq = _MySQLSeqRepo()
+        self._person = _PostgresPersonRepo()
+        self._face_image = _PostgresFaceImageRepo()
+        self._recognition_log = _PostgresRecognitionLogRepo()
+        self._alert_rule = _PostgresAlertRuleRepo()
+        self._seq = _PostgresSeqRepo()
 
     @property
-    def person(self) -> _MySQLPersonRepo:
+    def person(self) -> _PostgresPersonRepo:
         return self._person
 
     @property
-    def face_image(self) -> _MySQLFaceImageRepo:
+    def face_image(self) -> _PostgresFaceImageRepo:
         return self._face_image
 
     @property
-    def recognition_log(self) -> _MySQLRecognitionLogRepo:
+    def recognition_log(self) -> _PostgresRecognitionLogRepo:
         return self._recognition_log
 
     @property
-    def alert_rule(self) -> _MySQLAlertRuleRepo:
+    def alert_rule(self) -> _PostgresAlertRuleRepo:
         return self._alert_rule
 
     @property
-    def seq(self) -> _MySQLSeqRepo:
+    def seq(self) -> _PostgresSeqRepo:
         return self._seq

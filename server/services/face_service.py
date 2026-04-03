@@ -3,6 +3,7 @@ import os
 import time
 
 import cv2
+import faiss
 import numpy as np
 from deepface import DeepFace
 
@@ -20,6 +21,9 @@ class FaceService:
         #          face_image_id, embedding(np.ndarray)}
         self._cache_loaded: bool = False
         self._alert_cache: dict[int, list[dict]] = {}
+        # FAISS 인덱스 (cosine = L2 정규화 후 내적)
+        self._faiss_index: faiss.IndexFlatIP | None = None
+        self._embedding_dim: int | None = None
 
     # ──────────────────────────────────────────────
     # Warmup
@@ -73,11 +77,30 @@ class FaceService:
                 }
             )
         self._cache_loaded = True
+        self._rebuild_faiss_index()
         logger.info("Embedding cache loaded: %d entries", len(self._embedding_cache))
+
+    def _rebuild_faiss_index(self):
+        """캐시 전체로 FAISS 인덱스 재빌드."""
+        if not self._embedding_cache:
+            self._faiss_index = None
+            return
+        vecs = np.array(
+            [e["embedding"].flatten() for e in self._embedding_cache],
+            dtype=np.float32,
+        )
+        dim = vecs.shape[1]
+        self._embedding_dim = dim
+        faiss.normalize_L2(vecs)  # cosine distance = L2 정규화 내적
+        index = faiss.IndexFlatIP(dim)
+        index.add(vecs)
+        self._faiss_index = index
+        logger.debug("FAISS index rebuilt: %d vectors, dim=%d", index.ntotal, dim)
 
     def reload_cache(self, repo):
         """캐시 무효화 후 재로드."""
         self._embedding_cache = []
+        self._faiss_index = None
         self._cache_loaded = False
         self.load_embedding_cache(repo)
         self.load_alert_cache(repo)
@@ -100,13 +123,22 @@ class FaceService:
                 "embedding": embedding,
             }
         )
+        # FAISS 인덱스에 벡터 추가 (전체 재빌드보다 빠름)
+        vec = embedding.flatten().astype(np.float32).reshape(1, -1)
+        faiss.normalize_L2(vec)
+        if self._faiss_index is None:
+            dim = vec.shape[1]
+            self._embedding_dim = dim
+            self._faiss_index = faiss.IndexFlatIP(dim)
+        self._faiss_index.add(vec)
 
     def _invalidate_cache_for_person(self, person_id: int):
-        """인물 삭제 시 호출. 해당 person의 캐시 항목 제거."""
+        """인물 삭제 시 호출. 해당 person의 캐시 항목 제거 후 FAISS 재빌드."""
         self._embedding_cache = [
             e for e in self._embedding_cache if e["person_id"] != person_id
         ]
         self._alert_cache.pop(person_id, None)
+        self._rebuild_faiss_index()  # 삭제는 재빌드가 필요
 
     # ──────────────────────────────────────────────
     # Alert Cache
@@ -398,7 +430,7 @@ class FaceService:
             embedding_np = np.array(rep["embedding"], dtype=np.float32)
 
             # 캐시 매칭
-            if not self._embedding_cache:
+            if not self._embedding_cache or self._faiss_index is None:
                 results.append(
                     {
                         "person_id": None,
@@ -411,17 +443,13 @@ class FaceService:
                 )
                 continue
 
-            # numpy 벡터화 cosine distance
-            db_matrix = np.array([e["embedding"] for e in self._embedding_cache])
-            new_vec = embedding_np.flatten()
-            norms_db = np.linalg.norm(db_matrix, axis=1)
-            norm_new = np.linalg.norm(new_vec)
-            denominator = norms_db * norm_new + 1e-10
-            cosine_sim = np.dot(db_matrix, new_vec) / denominator
-            distances = 1 - cosine_sim
-
-            min_idx = int(np.argmin(distances))
-            min_distance = float(distances[min_idx])
+            # FAISS cosine 검색 (L2 정규화 내적)
+            vec = embedding_np.flatten().astype(np.float32).reshape(1, -1)
+            faiss.normalize_L2(vec)
+            scores, indices = self._faiss_index.search(vec, k=1)
+            min_idx = int(indices[0][0])
+            cosine_sim = float(scores[0][0])
+            min_distance = 1.0 - cosine_sim
 
             # D5: threshold 비교
             if min_distance <= settings.RECOGNITION_THRESHOLD:
@@ -479,19 +507,27 @@ class FaceService:
         if not candidates:
             return (False, None, float("inf"))
 
-        new_vec = np.array(embedding).flatten()
-        db_matrix = np.array([c["embedding"].flatten() for c in candidates])
+        new_vec = np.array(embedding).flatten().astype(np.float32)
 
-        # cosine distance = 1 - cosine_similarity
-        norms_db = np.linalg.norm(db_matrix, axis=1)
-        norm_new = np.linalg.norm(new_vec)
-        denominator = norms_db * norm_new + 1e-10
-        cosine_sim = np.dot(db_matrix, new_vec) / denominator
-        distances = 1 - cosine_sim
-
-        min_idx = int(np.argmin(distances))
-        min_distance = float(distances[min_idx])
-        matched_person_id = candidates[min_idx]["person_id"]
+        # exclude_person_id 없으면 FAISS 직접 사용 (빠름)
+        if exclude_person_id is None and self._faiss_index is not None:
+            q = new_vec.reshape(1, -1).copy()
+            faiss.normalize_L2(q)
+            scores, indices = self._faiss_index.search(q, k=1)
+            min_idx = int(indices[0][0])
+            min_distance = float(1.0 - scores[0][0])
+            matched_person_id = self._embedding_cache[min_idx]["person_id"]
+        else:
+            # exclude_person_id 있는 경우: 후보 numpy 브루트포스
+            db_matrix = np.array([c["embedding"].flatten() for c in candidates], dtype=np.float32)
+            norms_db = np.linalg.norm(db_matrix, axis=1)
+            norm_new = np.linalg.norm(new_vec)
+            denominator = norms_db * norm_new + 1e-10
+            cosine_sim = np.dot(db_matrix, new_vec) / denominator
+            distances = 1 - cosine_sim
+            min_idx = int(np.argmin(distances))
+            min_distance = float(distances[min_idx])
+            matched_person_id = candidates[min_idx]["person_id"]
 
         is_duplicate = min_distance <= settings.DUPLICATE_THRESHOLD
         return (is_duplicate, matched_person_id, min_distance)

@@ -2,11 +2,11 @@
 
 ## 개요
 웹캠 영상에서 실시간으로 얼굴을 인식·등록·검색하는 시스템.
-DeepFace 라이브러리 기반으로 얼굴 임베딩을 추출하고, Docker DB에 메타데이터를 저장한다.
+DeepFace 라이브러리 기반으로 얼굴 임베딩을 추출하고, 원격 PostgreSQL DB에 메타데이터를 저장한다.
 
 ## 아키텍처
-- FastAPI 백엔드 + Streamlit 프런트엔드 + Docker DB의 3-tier 구조로 역할 분리
-- Repository Pattern으로 DB를 추상화하여 DB_BACKEND 환경변수 하나로 MySQL ↔ Redis Stack 교체 가능
+- FastAPI 백엔드 + Streamlit 프런트엔드 + 원격 PostgreSQL의 3-tier 구조로 역할 분리
+- Repository Pattern으로 DB를 추상화하여 SQLAlchemy ORM → PostgreSQL 사용
 
 ## 얼굴 인식 엔진
 - DeepFace + RetinaFace(detector) + VGG-Face(model) 조합으로 5-point landmark 기반 정밀 임베딩 추출
@@ -47,7 +47,7 @@ DeepFace 라이브러리 기반으로 얼굴 임베딩을 추출하고, Docker D
 
 ## 성능 최적화
 - lifespan startup에서 DeepFace 모델 워밍업(콜드스타트 방지) + 임베딩 메모리 캐시 로드
-- Redis 모드 시 RediSearch VSS 벡터 인덱스로 검색 가속
+- numpy 기반 cosine distance 브루트포스 벡터 검색
 
 ## Python 환경
 - Python 3.12.x 기반, venv 가상환경(.venv/)으로 격리
@@ -58,5 +58,6 @@ DeepFace 라이브러리 기반으로 얼굴 임베딩을 추출하고, Docker D
 ## 테스트
 - pytest + httpx AsyncClient 기반, Repository Mock/Stub으로 양쪽 백엔드 단위테스트 + API 통합테스트
 
-## 인프라 (Docker)
-- docker-compose profiles로 MySQL/Redis 선택 기동, 볼륨 영속화, RedisInsight UI(8001) 포함
+## 인프라
+- 원격 PostgreSQL 사용 (로컬 Docker 컨테이너 없음)
+- DATABASE_URL 환경변수로 접속 정보 관리

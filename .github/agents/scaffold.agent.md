@@ -15,8 +15,8 @@ You are responsible for **Phase A (Step 1~3)** of the workflow:
 - All `__init__.py` files in the above directories
 - `.gitignore`
 - `.env` + `.env.example`
-- `docker-compose.yml`
-- `init.sql` — MySQL 초기 스키마 (DB 생성 + person_name_seq 초기 행)
+- `docker-compose.yml` — 빈 파일 (원격 PostgreSQL 사용으로 로컬 Docker 없음)
+- `init.sql` — pgvector 활성화 SQL (원격 DB에 OS 수준 설치 후 수동 적용)
 - `requirements.txt`
 - `logger.py`
 
@@ -51,30 +51,18 @@ Include: `.env`, `face_db/`, `logs/`, `__pycache__/`, `.venv/`, `*.pyc`, `.idea/
 `.env`에는 아래 기본값을 미리 채워 넣어 바로 실행 가능하도록 한다:
 
 ```env
-DB_BACKEND=mysql
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=root
-DB_NAME=deepface_live
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@100.95.34.69:5555/cctv?sslmode=disable
 ```
 
 `.env.example`에는 동일 키를 두되 민감 값은 비운다:
 
 ```env
-DB_BACKEND=mysql
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=
-DB_PASSWORD=
-DB_NAME=deepface_live
+DATABASE_URL=postgresql+psycopg2://<user>:<password>@<host>:<port>/<dbname>?sslmode=disable
 ```
 
 All environment variables from plan.md Step 2, including:
 
-- `DB_BACKEND` (mysql | redis, default: mysql)
-- MySQL: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
-- Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
+- `DATABASE_URL` (PostgreSQL 접속 URL 전체, sslmode=disable 포함)
 - `FASTAPI_HOST`, `FASTAPI_PORT`, `STREAMLIT_PORT`
 - `FACE_DB_PATH`, `DEEPFACE_MODEL`, `DEEPFACE_DETECTOR`, `DEEPFACE_DETECTOR_REALTIME`, `DEEPFACE_DISTANCE_METRIC`
 - Registration conditions: `FACE_MIN_CONFIDENCE=0.90`, `FACE_MIN_SIZE=112`, `FACE_BLUR_THRESHOLD=100.0`
@@ -84,23 +72,23 @@ All environment variables from plan.md Step 2, including:
 
 ### A-4: `docker-compose.yml`
 
-- MySQL 8.x profile (`--profile mysql`): volume mount, `init.sql` bind mount to `/docker-entrypoint-initdb.d/`, ports
-- Redis Stack profile (`--profile redis`): redis/redis-stack image, ports 6379 + 8001
+- 원격 PostgreSQL (`100.95.34.69:5555`) 사용으로 로컬 Docker DB 컨테이너 불필요
+- `services: {}` (빈 compose 파일로 유지)
 
 ### A-4b: `init.sql`
 
-MySQL 초기화 SQL (docker-entrypoint-initdb.d에서 자동 실행):
+pgvector 활성화 SQL (원격 PostgreSQL에 OS 수준 `postgresql-17-pgvector` 설치 후 수동 적용):
 
 ```sql
-CREATE DATABASE IF NOT EXISTS deepface_live CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE deepface_live;
--- person_name_seq 초기 행은 ORM Base.metadata.create_all() 이후 @backend가 처리
--- init.sql은 DB 생성만 담당
+CREATE EXTENSION IF NOT EXISTS vector;
+ALTER TABLE face_images ADD COLUMN IF NOT EXISTS embedding_vec vector(512);
+CREATE INDEX IF NOT EXISTS idx_face_images_embedding_vec
+  ON face_images USING hnsw (embedding_vec vector_cosine_ops);
 ```
 
 ### A-5: `requirements.txt`
 
-Pin versions for: fastapi, uvicorn, sqlalchemy, pymysql, redis[hiredis], deepface, opencv-python, retina-face, streamlit, streamlit-webrtc, pydantic-settings, python-dotenv, httpx, numpy, Pillow, pytest, pytest-asyncio, plotly
+Pin versions for: fastapi, uvicorn, sqlalchemy, psycopg2-binary, pgvector, faiss-cpu, deepface, tf-keras, opencv-python, retina-face, insightface, onnxruntime-gpu, streamlit, streamlit-webrtc, pydantic-settings, python-dotenv, python-multipart, httpx, numpy, Pillow, pytest, pytest-asyncio, plotly
 
 ### A-6: `logger.py`
 
@@ -114,28 +102,25 @@ Python standard `logging` module based `setup_logging()` function with:
 
 Python 3.12 기반 venv를 생성하고 의존성을 설치한다.
 
-1. `python -m venv .venv` — 가상환경 생성
+1. `uv venv .venv --python 3.12` — 가상환경 생성
 2. `.venv\Scripts\activate` (Windows) / `source .venv/bin/activate` (Linux/macOS) — 활성화
-3. `pip install --upgrade pip` — pip 최신화
-4. `pip install -r requirements.txt` — 전체 의존성 설치
-5. 검증: `python -c "import deepface; print(deepface.__version__)"`
-
-**주의**: tensorflow 2.16~2.17 + numpy <2.0 조합을 반드시 지켜야 한다.
+3. `uv pip install -r requirements.txt` — 전체 의존성 설치
+4. 검증: `python -c "import deepface; print(deepface.__version__)"`
 
 ## Verification
 
 After completion, confirm:
 
 ```bash
-docker compose --profile mysql up -d   # MySQL starts
-docker compose --profile redis up -d   # Redis starts
+python -c "from server.database import engine; engine.connect(); print('PostgreSQL OK')"
 python -c "from logger import setup_logging; setup_logging()"  # Logger loads
 python --version                       # Python 3.12.x
 python -c "import fastapi; print(fastapi.__version__)"         # Package installed
 python -c "import deepface; print(deepface.__version__)"       # DeepFace loads
+python -c "import faiss; print('FAISS OK')"                    # FAISS loaded
 ```
 
 ## Reference Documents
 
-- Refer to `plan.md` for full environment variable specifications, Docker Compose details, and logger.py code
+- Refer to `plan.md` for full environment variable specifications and logger.py code
 - Refer to `workflow.md` Phase A for task sequence and completion criteria

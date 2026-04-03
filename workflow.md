@@ -9,7 +9,7 @@
 | Agent            | 역할                              | 담당 Step              | 핵심 산출물                                                                                                                             |
 | ---------------- | --------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | **@scaffold**    | 프로젝트 기반 구축                | 1, 2, 3                | 디렉토리, `.env`, `docker-compose.yml`, `requirements.txt`, `.gitignore`                                                                |
-| **@backend**     | Repository Pattern + FastAPI 서버 | 4, 5, 6, 8, 9, 10, 11  | `repositories/**`, `config.py`, `database.py`, `redis_client.py`, `models.py`, `schemas.py`, `main.py`, `routers/*`, `alert_service.py` |
+| **@backend**     | Repository Pattern + FastAPI 서버 | 4, 5, 6, 8, 9, 10, 11  | `repositories/**`, `config.py`, `database.py`, `models.py`, `schemas.py`, `main.py`, `routers/*`, `alert_service.py` |
 | **@face-engine** | DeepFace 핵심 로직                | 7                      | `face_service.py`                                                                                                                       |
 | **@frontend**    | Streamlit UI                      | 12, 13, 14, 15, 16, 17 | `ui/app.py`, `ui/pages/*`, `ui/components/*`                                                                                            |
 | **@tester**      | 테스트 & 문서화                   | 18, 19                 | `tests/*`, `README.md`                                                                                                                  |
@@ -54,8 +54,8 @@ Phase A          Phase B                    Phase C              Phase D
 | ---- | ------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | A-1  | Step 1  | 디렉토리 구조 + `__init__.py` 전체 생성 | `server/`, `server/routers/`, `server/services/`, `server/repositories/`, `ui/`, `ui/pages/`, `ui/components/`, `face_db/`, `tests/`, `logs/` | 모든 디렉토리 존재, `__init__.py` 포함                              |
 | A-2  | Step 1  | `.gitignore` 생성                       | `.gitignore`                                                                                                                                  | `.env`, `face_db/`, `logs/`, `__pycache__/`, `.venv/` 포함          |
-| A-3  | Step 2  | `.env` + `.env.example` 생성            | `.env`, `.env.example`                                                                                                                        | plan Step 2의 모든 환경변수 포함 (DB_BACKEND, MySQL/Redis, 로깅 등) |
-| A-4  | Step 3  | `docker-compose.yml` 작성               | `docker-compose.yml`                                                                                                                          | MySQL/Redis profile 분리, 볼륨 매핑                                 |
+| A-3  | Step 2  | `.env` + `.env.example` 생성            | `.env`, `.env.example`                                                                                                                        | `DATABASE_URL` 등 전체 환경변수 포함                           |
+| A-4  | Step 3  | `docker-compose.yml` 작성               | `docker-compose.yml`                                                                                                                          | 로장리 Docker 알음 (원격 PostgreSQL 사용)                     |
 | A-5  | Step 1  | `requirements.txt` 작성                 | `requirements.txt`                                                                                                                            | 버전 고정, 전체 의존성 목록                                         |
 | A-6  | Step 1  | `logger.py` 작성                        | `logger.py`                                                                                                                                   | `setup_logging()` 함수, 콘솔+파일 핸들러                            |
 | A-7  | Step 1b | 가상환경 생성 + 패키지 설치             | `.venv/`, 설치된 패키지                                                                                                                       | `python -m venv .venv && pip install -r requirements.txt` 성공      |
@@ -63,8 +63,7 @@ Phase A          Phase B                    Phase C              Phase D
 **Phase A 검증 체크포인트**:
 
 ```bash
-docker compose --profile mysql up -d   # MySQL 기동 확인
-docker compose --profile redis up -d   # Redis 기동 확인
+python -c "from server.database import engine; engine.connect()"   # PostgreSQL 접속 확인
 python -c "from logger import setup_logging; setup_logging()"  # 로거 정상 로드
 python --version                       # Python 3.12.x 확인
 python -c "import fastapi; print(fastapi.__version__)"         # 패키지 정상 로드
@@ -98,7 +97,7 @@ Phase B는 내부적으로 **3개 서브 구간**으로 나뉜다:
 **Phase B-1 검증 체크포인트**:
 
 ```bash
-python -c "from server.config import settings; print(settings.DB_BACKEND)"
+python -c "from server.config import settings; print(settings.DATABASE_URL)"
 python -c "from server.repositories import get_repository; repo = get_repository()"
 ```
 
@@ -219,7 +218,7 @@ C-2.1 ────┼─ C-2.4 (Recognition API 테스트)
 
 | 순서 | 검증 항목          | 실행 명령                              | 기대 결과                                     |
 | ---- | ------------------ | -------------------------------------- | --------------------------------------------- |
-| D-1  | Docker DB 기동     | `docker compose --profile mysql up -d` | MySQL 8.x 정상 실행                           |
+| D-1  | PostgreSQL 연결 확인  | `python -c "from server.database import engine; engine.connect()"` | PostgreSQL 접속 성공          |
 | D-2  | FastAPI 서버 기동  | `uvicorn server.main:app`              | 모델 워밍업 완료, `/docs` 접근 가능           |
 | D-3  | 전체 테스트 스위트 | `pytest tests/ -v`                     | 전체 통과                                     |
 | D-4  | Streamlit UI 기동  | `streamlit run ui/app.py`              | 5개 페이지 정상 렌더링                        |
@@ -227,7 +226,7 @@ C-2.1 ────┼─ C-2.4 (Recognition API 테스트)
 | D-6  | 등록 → 중복 체크   | 동일 얼굴 2회 등록                     | 2회차에 409 Conflict                          |
 | D-7  | 등록 조건 검증     | 흐릿/작은/다중얼굴 이미지 등록 시도    | 각 조건별 400 + 구체 메시지 반환              |
 | D-8  | 알림 규칙          | 규칙 설정 → 인물 감지                  | `st.toast()` 팝업                             |
-| D-9  | DB 전환            | `.env` → `DB_BACKEND=redis`            | Redis로 전환, 동일 동작 확인                  |
+| D-9  | 환경변수 확인          | `.env` 의 `DATABASE_URL` 점검             | PostgreSQL 접속 정보 일치 확인              |
 
 ---
 
@@ -237,8 +236,7 @@ C-2.1 ────┼─ C-2.4 (Recognition API 테스트)
 | ------- | ----------------------- | ------------------------ | -------------------------------------- |
 | **A**   | @scaffold (단독)        | 1                        | 없음 (가벼운 작업)                     |
 | **B-1** | @backend (단독)         | 1                        | Config/ORM이 모든 후속의 전제          |
-| **B-2** | @backend + @face-engine | **2**                    | @face-engine은 Repository ABC만 의존   |
-| **B-3** | @backend (단독)         | 1                        | recognition 라우터가 face_service 필요 |
+| **B-2** | @backend + @face-engine | **2**                    | @face-engine은 Repository ABC만 의존   || **B-3** | @backend (단독)         | 1                        | recognition 라우터가 face_service 필요 |
 | **C**   | @frontend + @tester     | **2** (내부 각 5개 병렬) | 없음 (완전 독립)                       |
 | **D**   | 통합 검증               | 1                        | 전체 완료 후                           |
 
@@ -264,10 +262,8 @@ C-2.1 ────┼─ C-2.4 (Recognition API 테스트)
     ├─ B-1.2: Repository 팩토리 (__init__.py)
     ├─ B-1.3: config.py
     ├─ B-1.4: models.py (ORM)
-    ├─ B-1.5: database.py (MySQL 엔진)
-    ├─ B-1.6: redis_client.py
-    ├─ B-1.7: mysql_repo.py
-    ├─ B-1.8: redis_repo.py
+    ├─ B-1.5: database.py (PostgreSQL 엔진)
+    ├─ B-1.7: postgres_repo.py
     └─ B-1.9: schemas.py
          │
          ├────────────────────────┐
@@ -405,7 +401,7 @@ C-2.1 ────┼─ C-2.4 (Recognition API 테스트)
 | `logger.py`                                                     | @scaffold        |                           |
 | `server/config.py`                                              | @backend         |                           |
 | `server/database.py`                                            | @backend         |                           |
-| `server/redis_client.py`                                        | @backend         |                           |
+| `server/redis_client.py` (미사용)                              | @backend         | PostgreSQL 전환으로 미사용 |
 | `server/models.py`                                              | @backend         |                           |
 | `server/schemas.py`                                             | @backend         |                           |
 | `server/repositories/*`                                         | @backend         |                           |

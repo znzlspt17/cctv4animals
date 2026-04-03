@@ -104,8 +104,7 @@ You are responsible for **Phase C-1 (Step 12~17)** of the workflow.
 - **공통 슬라이더**:
   - `RECOGNITION_THRESHOLD`: 0.20~0.80, step 0.05, default 0.40
 - Overlay display options (name, phone, address toggles)
-- DB connection status indicator
-- Current DB backend display (`DB_BACKEND` value)
+- DB connection status indicator (`DATABASE_URL` 접속 확인)
 - Log level selection dropdown
 
 **설정 저장 방식**: 슬라이더 변경 시 `st.session_state`에 즉시 반영 → 런타임에만 적용. `.env` 파일은 수정하지 않음. 서버 재시작 시 `.env` 기본값으로 복원됨. Settings 페이지 상단에 "⚠️ 변경된 설정은 현재 세션에만 적용됩니다" 안내 표시.

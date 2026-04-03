@@ -16,28 +16,19 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("Starting DeepFace Live server...")
 
-    # 2) DB 초기화 — DB_BACKEND 분기
-    from server.config import settings
+    # 2) DB 초기화 — PostgreSQL
+    import server.models  # noqa: F401 — 모델을 Base.metadata에 등록
+    from server.database import Base, engine
 
-    if settings.DB_BACKEND == "mysql":
-        import server.models  # noqa: F401 — 모델을 Base.metadata에 등록
-        from server.database import Base, engine
-
-        Base.metadata.create_all(bind=engine)
-        _ensure_person_seq()
-        logger.info("MySQL tables initialized")
-    else:
-        from server.repositories.redis_repo import RedisRepository
-
-        repo = RedisRepository()
-        repo.init_indexes()
-        logger.info("Redis indexes initialized")
+    Base.metadata.create_all(bind=engine)
+    _ensure_person_seq()
+    logger.info("PostgreSQL tables initialized")
 
     # 3) Repository 팩토리 → app.state.repo
     from server.repositories import get_repository
 
     app.state.repo = get_repository()
-    logger.info(f"Repository initialized (backend={settings.DB_BACKEND})")
+    logger.info("Repository initialized (backend=postgres)")
 
     # 4) FaceService
     from server.services.face_service import face_service

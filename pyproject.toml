@@ -16,3 +16,15 @@ omit = ["tests/*"]
 [tool.coverage.report]
 show_missing = true
 fail_under = 70
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.pyright]
+pythonVersion = "3.12"

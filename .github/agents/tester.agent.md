@@ -42,8 +42,6 @@ You are responsible for **Phase C-2 (Step 18~19)** of the workflow.
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
-    "mysql: MySQL backend tests",
-    "redis: Redis backend tests",
     "slow: slow-running tests",
 ]
 filterwarnings = [
@@ -62,7 +60,7 @@ fail_under = 70
 ### C-2.1: `tests/conftest.py` (required first)
 
 - FastAPI `TestClient` fixture (httpx.AsyncClient)
-- Test DB session fixture: **SQLite in-memory** (기본, CI용) + MySQL 선택적 (`--mysql` CLI flag)
+- Test DB session fixture: **SQLite in-memory** (CI/로여 테스트용, PostgreSQL ORM 호환)
 - Repository fixture with test data seeded
 - **Sample image fixtures** (테스트 이미지 생성 전략):
   - `valid_face_image`: numpy로 224x224 검정 이미지 생성 + DeepFace.represent를 mock하여 가짜 embedding 반환
@@ -71,48 +69,43 @@ fail_under = 70
   - `multi_face_image`: 2개 face detection 결과를 mock하여 반환
   - `no_face_image`: DeepFace.represent가 빈 리스트 반환하도록 mock
 - **FaceService mock fixture**: DeepFace.represent 전체를 mock하여 실제 모델 다운로드 방지
-- **Dual-backend 테스트 지원**: `conftest.py`에서 `DB_BACKEND` parametrize fixture 정의
 
-### Dual-Backend Test Strategy
+### Repository Test Strategy
 
-MySQL과 Redis 양쪽 구현체를 동일 테스트로 검증:
+PostgreSQL 구현체를 SQLite in-memory로 테스트 (SQLAlchemy ORM 호환):
 
 ```python
-@pytest.fixture(params=["mysql", "redis"])
-def repo(request, tmp_path):
-    """MySQL(SQLite mock) / Redis(fakeredis) 양쪽에서 동일 테스트 실행."""
-    if request.param == "mysql":
-        # SQLite in-memory로 MySQL ORM 호환 테스트
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        session = Session(engine)
-        yield MySQLRepository(session)
-        session.close()
-    else:
-        # fakeredis로 Redis mock
-        import fakeredis
-        fake_redis = fakeredis.FakeRedis()
-        yield RedisRepository(fake_redis)
-        fake_redis.flushall()
+@pytest.fixture
+def repo(tmp_path):
+    """SQLite in-memory로 PostgresRepository ORM 테스트."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from server.database import Base
+    from server.repositories.mysql_repo import PostgresRepository
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    yield PostgresRepository(session)
+    session.close()
 ```
 
-- `test_repository.py`에서 이 `repo` fixture 사용 → 양쪽 자동 실행
-- API 통합 테스트는 기본 SQLite(MySQL호환)로만 실행 (CI 속도)
-- `@pytest.mark.redis`로 Redis 전용 테스트 마킹 (선택적 실행)
+- `test_repository.py`에서 이 `repo` fixture 사용 → PostgresRepository 자동 테스트
+- API 통합 테스트는 SQLite in-memory로만 실행 (CI 속도)
 
 ### C-2.2~C-2.6 can be developed in parallel (all depend only on C-2.1)
 
 ### C-2.2: `tests/test_repository.py`
 
 - CRUD operations for each repository interface (5 Repos × CRUD)
-- MySQL and Redis implementation tests (dual-backend `repo` fixture 사용)
+- PostgresRepository 구현체 테스트 (SQLite in-memory `repo` fixture 사용)
 - Sequence generation concurrency test
 - **Edge case tests**:
   - Empty DB: 첫 등록 시 `list_all()` → 빈 리스트, `next_person_number()` → 1
   - `get_all_embeddings()` on empty DB → 빈 리스트 (캐시 초기화 시 에러 없음)
   - `is_duplicate_log()` with no logs → False
   - `cleanup()` with no expired logs → 0 반환
-  - Concurrent `next_person_number()` 호출 → 중복 번호 없음 (MySQL: FOR UPDATE, Redis: INCR)
+  - Concurrent `next_person_number()` 호웉 → 중복 번호 없음 (PostgreSQL: SELECT FOR UPDATE)
 
 ### C-2.3: `tests/test_person_api.py`
 
@@ -179,8 +172,6 @@ def repo(request, tmp_path):
 
 ```bash
 pytest tests/ -v                                      # All tests pass
-pytest tests/ -v -m "not redis"                       # MySQL-only (CI default)
-pytest tests/ -v -m redis                             # Redis-only (requires fakeredis)
 pytest tests/ --cov=server --cov-report=term-missing  # Coverage report (>= 70%)
 ```
 

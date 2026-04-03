@@ -19,7 +19,7 @@
 | 프론트엔드 | Streamlit                                |
 | 얼굴 인식  | DeepFace (Buffalo_L + ONNX Runtime CUDA) |
 | ORM        | SQLAlchemy 2.0                           |
-| DB         | MySQL 8.0 / Redis 7 (선택)               |
+| DB         | PostgreSQL (원격)                        |
 | 설정       | pydantic-settings + .env                 |
 
 ## 설치
@@ -39,34 +39,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Docker DB 실행
-
-```bash
-# MySQL 백엔드
-docker compose --profile mysql up -d
-
-# Redis 백엔드
-docker compose --profile redis up -d
-```
-
-### 3. 환경변수 설정
+### 2. 환경변수 설정
 
 프로젝트 루트에 `.env` 파일을 생성합니다:
 
 ```env
-DB_BACKEND=mysql
-
-# MySQL
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=root
-DB_NAME=deepface_live
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@100.95.34.69:5555/cctv
 
 # Face Recognition
 DEEPFACE_MODEL=Buffalo_L
@@ -74,7 +52,7 @@ DEEPFACE_DETECTOR=retinaface
 RECOGNITION_THRESHOLD=0.40
 ```
 
-### 4. 서버 실행
+### 3. 서버 실행
 
 ```bash
 # FastAPI 서버
@@ -127,11 +105,9 @@ deepface_live/
 │   ├── database.py              # SQLAlchemy 엔진/세션
 │   ├── models.py                # ORM 모델
 │   ├── schemas.py               # Pydantic 요청/응답 스키마
-│   ├── redis_client.py          # Redis 클라이언트
 │   ├── repositories/
 │   │   ├── base.py              # AbstractRepository (5개 sub-repo)
-│   │   ├── mysql_repo.py        # MySQL 구현체
-│   │   └── redis_repo.py        # Redis 구현체
+│   │   └── mysql_repo.py        # PostgreSQL 구현체 (SQLAlchemy)
 │   ├── routers/
 │   │   ├── person.py            # 인물 CRUD API
 │   │   ├── recognition.py       # 인식/등록 API
@@ -158,17 +134,9 @@ deepface_live/
 
 ## 환경변수 목록
 
-| 변수                           | 기본값          | 설명                              |
-| ------------------------------ | --------------- | --------------------------------- |
-| `DB_BACKEND`                   | `mysql`         | DB 백엔드 (`mysql` / `redis`)     |
-| `DB_HOST`                      | `localhost`     | MySQL 호스트                      |
-| `DB_PORT`                      | `3306`          | MySQL 포트                        |
-| `DB_USER`                      | `root`          | MySQL 사용자                      |
-| `DB_PASSWORD`                  | `root`          | MySQL 비밀번호                    |
-| `DB_NAME`                      | `deepface_live` | MySQL 데이터베이스명              |
-| `REDIS_HOST`                   | `localhost`     | Redis 호스트                      |
-| `REDIS_PORT`                   | `6379`          | Redis 포트                        |
-| `REDIS_PASSWORD`               | (빈 문자열)     | Redis 비밀번호                    |
+| 변수                           | 기본값                                        | 설명                              |
+| ------------------------------ | --------------------------------------------- | --------------------------------- |
+| `DATABASE_URL`                 | `postgresql+psycopg2://...`                   | PostgreSQL 접속 URL               |
 | `FACE_DB_PATH`                 | `face_db`       | 얼굴 이미지 저장 경로             |
 | `DEEPFACE_MODEL`               | `Buffalo_L`     | DeepFace 인식 모델 (ONNX GPU)     |
 | `DEEPFACE_DETECTOR`            | `retinaface`    | 등록용 얼굴 검출기                |
