@@ -12,6 +12,7 @@ import requests
 import streamlit as st
 from streamlit_webrtc import VideoProcessorBase, WebRtcMode, webrtc_streamer
 
+from server.config import settings
 from ui.components.sidebar import render_sidebar
 from ui.components.video_renderer import draw_results
 
@@ -20,7 +21,9 @@ render_sidebar()
 
 st.title("📹 실시간 얼굴 인식")
 
-API_BASE = st.session_state.get("api_base_url", "http://localhost:8000/api")
+_api_host = settings.FASTAPI_HOST if settings.FASTAPI_HOST != "0.0.0.0" else "localhost"
+_default_api_base = f"http://{_api_host}:{settings.FASTAPI_PORT}/api"
+API_BASE = st.session_state.get("api_base_url", _default_api_base)
 
 # ── 컨트롤 패널 ──
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
@@ -55,7 +58,7 @@ class FaceRecognitionProcessor(VideoProcessorBase):
         self.recognition_active: bool = True
         self.frame_skip: int = 3
         self.display_mode: str = "name"
-        self.api_base: str = "http://localhost:9000/api"
+        self.api_base: str = _default_api_base
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")

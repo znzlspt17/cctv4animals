@@ -42,6 +42,9 @@ async def register(
     file: UploadFile = File(...),
     person_id: int | None = Form(None),
     capture_condition: str | None = Form(None),
+    display_name: str | None = Form(None),
+    phone: str | None = Form(None),
+    address: str | None = Form(None),
 ):
     """이미지 + (선택적 person_id) → 얼굴 등록. person_id 없으면 새 인물 자동 생성."""
     repo = request.app.state.repo
@@ -54,7 +57,12 @@ async def register(
     if person_id is None:
         seq_num = repo.seq.next_person_number()
         person_name = f"person{seq_num}"
-        person = repo.person.create(name=person_name)
+        person = repo.person.create(
+            name=person_name,
+            display_name=display_name,
+            phone=phone,
+            address=address,
+        )
         person_id = person.id
         person_name = person.name
         auto_created = True

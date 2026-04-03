@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import requests
 import streamlit as st
 
+from server.config import settings
 from ui.components.sidebar import render_sidebar
 
 st.set_page_config(page_title="얼굴 등록 — DeepFace Live", layout="wide")
@@ -15,7 +16,9 @@ render_sidebar()
 
 st.title("📸 얼굴 등록")
 
-API_BASE = st.session_state.get("api_base_url", "http://localhost:8000/api")
+_api_host = settings.FASTAPI_HOST if settings.FASTAPI_HOST != "0.0.0.0" else "localhost"
+_default_api_base = f"http://{_api_host}:{settings.FASTAPI_PORT}/api"
+API_BASE = st.session_state.get("api_base_url", _default_api_base)
 
 # ── 에러 코드 → 한국어 메시지 매핑 ──
 ERROR_MESSAGES = {
@@ -85,24 +88,6 @@ def _handle_register_response(resp):
         st.success(
             f"✅ 등록 성공! 인물: {data['person_name']} (ID: {data['person_id']})"
         )
-        # 추가 정보가 있으면 인물 정보 업데이트
-        person_id = data["person_id"]
-        update_data = {}
-        if input_display_name:
-            update_data["display_name"] = input_display_name
-        if input_phone:
-            update_data["phone"] = input_phone
-        if input_address:
-            update_data["address"] = input_address
-        if update_data:
-            try:
-                requests.put(
-                    f"{API_BASE}/persons/{person_id}",
-                    json=update_data,
-                    timeout=5,
-                )
-            except Exception:
-                pass
     elif resp.status_code == 409:
         # 중복 얼굴
         data = resp.json()
@@ -127,6 +112,12 @@ def _register_single(image_bytes: bytes, filename: str):
     form_data = {}
     if selected_person_id is not None:
         form_data["person_id"] = str(selected_person_id)
+    if input_display_name:
+        form_data["display_name"] = input_display_name
+    if input_phone:
+        form_data["phone"] = input_phone
+    if input_address:
+        form_data["address"] = input_address
 
     try:
         resp = requests.post(

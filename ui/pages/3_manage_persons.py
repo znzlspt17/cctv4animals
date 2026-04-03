@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import requests
 import streamlit as st
 
+from server.config import settings
 from ui.components.sidebar import render_sidebar
 
 st.set_page_config(page_title="인물 관리 — DeepFace Live", layout="wide")
@@ -15,7 +16,9 @@ render_sidebar()
 
 st.title("👤 인물 관리")
 
-API_BASE = st.session_state.get("api_base_url", "http://localhost:8000/api")
+_api_host = settings.FASTAPI_HOST if settings.FASTAPI_HOST != "0.0.0.0" else "localhost"
+_default_api_base = f"http://{_api_host}:{settings.FASTAPI_PORT}/api"
+API_BASE = st.session_state.get("api_base_url", _default_api_base)
 
 
 def load_persons() -> list[dict]:
