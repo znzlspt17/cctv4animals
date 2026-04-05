@@ -52,7 +52,7 @@ def test_seq_repo_interface():
     assert hasattr(SeqRepo, "next_person_number")
 
 
-# ── MySQL / Redis 모듈 import 확인 ──
+# ── MySQL 모듈 import 확인 ──
 
 
 def test_mysql_repo_importable():
@@ -60,13 +60,6 @@ def test_mysql_repo_importable():
     from server.repositories import mysql_repo  # noqa: F401
 
     assert hasattr(mysql_repo, "MySQLRepository")
-
-
-def test_redis_repo_importable():
-    """redis_repo 모듈이 import 가능한지 확인."""
-    from server.repositories import redis_repo  # noqa: F401
-
-    assert hasattr(redis_repo, "RedisRepository")
 
 
 # ── get_repository 팩토리 ──
