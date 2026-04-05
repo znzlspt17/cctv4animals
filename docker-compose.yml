@@ -1,4 +1,0 @@
-# 로컬 DB 서비스 없음 — 원격 PostgreSQL 사용
-# DATABASE_URL 을 .env 에 설정하세요
-# 예) DATABASE_URL=postgresql+psycopg2://user:password@host:5432/deepface_live
-services: {}
