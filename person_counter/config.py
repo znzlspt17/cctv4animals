@@ -34,9 +34,9 @@ class Settings(BaseSettings):
 
     # DB
     DB_HOST: str = "localhost"
-    DB_PORT: int = 3306
+    DB_PORT: int = 5432
     DB_NAME: str = "people_counter"
-    DB_USER: str = "root"
+    DB_USER: str = "postgres"
     DB_PASSWORD: str = ""
 
     # 알림

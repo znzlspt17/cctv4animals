@@ -37,9 +37,9 @@ def mock_settings():
     s.YOLO_MODEL = "yolov8n.pt"
     s.CONFIDENCE_THRESHOLD = 0.5
     s.DB_HOST = "localhost"
-    s.DB_PORT = 3306
+    s.DB_PORT = 5432
     s.DB_NAME = "test_db"
-    s.DB_USER = "root"
+    s.DB_USER = "postgres"
     s.DB_PASSWORD = ""
     s.KAKAO_ACCESS_TOKEN = ""
     s.KAKAO_REFRESH_TOKEN = ""

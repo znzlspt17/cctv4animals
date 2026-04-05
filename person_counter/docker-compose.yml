@@ -1,15 +1,15 @@
 services:
-  mysql:
-    image: mysql:8.0
+  postgres:
+    image: postgres:17
     environment:
-      MYSQL_ROOT_PASSWORD: 1111
-      MYSQL_DATABASE: people_counter
+      POSTGRES_PASSWORD: 1111
+      POSTGRES_DB: people_counter
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -17,13 +17,13 @@ services:
   app:
     build: .
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
     environment:
-      - DB_HOST=mysql
-      - DB_PORT=3306
+      - DB_HOST=postgres
+      - DB_PORT=5432
       - DB_NAME=people_counter
-      - DB_USER=root
+      - DB_USER=postgres
       - DB_PASSWORD=1111
     ports:
       - "8000:8000"
@@ -39,4 +39,4 @@ services:
               capabilities: [gpu]
 
 volumes:
-  mysql_data:
+  postgres_data:

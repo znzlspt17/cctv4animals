@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import pymysql
 from loguru import logger
 from sqlalchemy import (
     Column,
@@ -25,8 +24,8 @@ from config import settings
 # ---------------------------------------------------------------------------
 
 _DB_URL = (
-    f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}"
-    f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+    f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASSWORD}"
+    f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}?sslmode=disable"
 )
 
 engine = create_engine(
@@ -73,26 +72,7 @@ class TrackingEvent(Base):  # type: ignore[misc]
 
 
 def init_db() -> None:
-    """Create the database (if needed) and all tables."""
-    try:
-        conn = pymysql.connect(
-            host=settings.DB_HOST,
-            port=settings.DB_PORT,
-            user=settings.DB_USER,
-            password=settings.DB_PASSWORD,
-        )
-        with conn.cursor() as cur:
-            cur.execute(
-                "CREATE DATABASE IF NOT EXISTS `%s` "
-                "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-                % settings.DB_NAME  # DB name is from trusted config, not user input
-            )
-        conn.close()
-        logger.info("Database '{}' ensured.", settings.DB_NAME)
-    except Exception as exc:
-        logger.error("Failed to create database: {}", exc)
-        return
-
+    """Create all tables (PostgreSQL DB must already exist)."""
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("All tables created / verified.")
