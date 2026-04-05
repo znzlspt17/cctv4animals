@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>실시간 사람 카운팅 대시보드</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <style>
+      /* ===== Reset & Base ===== */
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg-primary: #1a1a2e;
+        --bg-secondary: #16213e;
+        --bg-card: #0f3460;
+        --accent-red: #e94560;
+        --accent-blue: #00d2ff;
+        --accent-green: #00e676;
+        --text-primary: #eef0f2;
+        --text-secondary: #a0aec0;
+        --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        --radius: 12px;
+        --transition: 0.3s ease;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        line-height: 1.6;
+      }
+
+      /* ===== Header ===== */
+      .header {
+        background: var(--bg-secondary);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 16px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .header h1 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .camera-badge {
+        background: var(--bg-card);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+      }
+
+      .ws-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+      }
+
+      .ws-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent-red);
+        transition: background var(--transition);
+      }
+
+      .ws-dot.connected {
+        background: var(--accent-green);
+      }
+
+      /* ===== Main Layout ===== */
+      .main {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      /* ===== Stat Cards ===== */
+      .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+
+      .stat-card {
+        background: var(--bg-card);
+        border-radius: var(--radius);
+        padding: 24px;
+        box-shadow: var(--shadow);
+        text-align: center;
+        transition:
+          transform var(--transition),
+          box-shadow var(--transition);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .stat-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+      }
+
+      .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      }
+
+      .stat-card .label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 8px;
+      }
+
+      .stat-card .value {
+        font-size: 3rem;
+        font-weight: 800;
+        line-height: 1.1;
+        transition: transform 0.2s ease;
+      }
+
+      .stat-card .value.pulse {
+        animation: pulse-anim 0.4s ease;
+      }
+
+      @keyframes pulse-anim {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.15);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      .card-current::before {
+        background: var(--accent-blue);
+      }
+      .card-current .value {
+        color: var(--accent-blue);
+      }
+
+      .card-in::before {
+        background: var(--accent-green);
+      }
+      .card-in .value {
+        color: var(--accent-green);
+      }
+
+      .card-out::before {
+        background: var(--accent-red);
+      }
+      .card-out .value {
+        color: var(--accent-red);
+      }
+
+      /* ===== Section Card (shared) ===== */
+      .section-card {
+        background: var(--bg-card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .section-header h2 {
+        font-size: 1rem;
+        font-weight: 600;
+      }
+
+      .section-body {
+        padding: 16px 20px;
+      }
+
+      /* ===== Charts ===== */
+      .charts-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 16px;
+      }
+
+      .chart-container {
+        position: relative;
+        width: 100%;
+      }
+
+      .chart-container canvas {
+        width: 100% !important;
+      }
+
+      /* ===== Video Stream ===== */
+      .stream-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0a0a1a;
+        border-radius: 8px;
+        min-height: 240px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .stream-wrapper img {
+        max-width: 100%;
+        max-height: 480px;
+        object-fit: contain;
+        display: block;
+      }
+
+      .stream-placeholder {
+        color: var(--text-secondary);
+        text-align: center;
+        padding: 40px;
+      }
+
+      .stream-placeholder .icon {
+        font-size: 3rem;
+        margin-bottom: 12px;
+      }
+
+      .resize-handle {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 20px;
+        height: 20px;
+        cursor: nwse-resize;
+        opacity: 0.4;
+      }
+
+      .resize-handle::after {
+        content: "\22F1";
+        position: absolute;
+        right: 4px;
+        bottom: 0;
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+
+      /* ===== Events Table ===== */
+      .events-wrapper {
+        max-height: 320px;
+        overflow-y: auto;
+      }
+
+      .events-wrapper::-webkit-scrollbar {
+        width: 6px;
+      }
+      .events-wrapper::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .events-wrapper::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 3px;
+      }
+
+      .events-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+
+      .events-table th {
+        text-align: left;
+        padding: 10px 12px;
+        background: rgba(0, 0, 0, 0.2);
+        color: var(--text-secondary);
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+
+      .events-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      }
+
+      .events-table tr {
+        transition: background var(--transition);
+      }
+      .events-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .events-table tr.new-row {
+        animation: row-flash 0.6s ease;
+      }
+
+      @keyframes row-flash {
+        0% {
+          background: rgba(0, 210, 255, 0.15);
+        }
+        100% {
+          background: transparent;
+        }
+      }
+
+      .dir-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+
+      .dir-in {
+        background: rgba(0, 230, 118, 0.15);
+        color: var(--accent-green);
+      }
+      .dir-out {
+        background: rgba(233, 69, 96, 0.15);
+        color: var(--accent-red);
+      }
+
+      /* ===== Performance Panel ===== */
+      .perf-toggle {
+        background: none;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: var(--text-secondary);
+        padding: 4px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        transition: all var(--transition);
+      }
+
+      .perf-toggle:hover {
+        border-color: var(--accent-blue);
+        color: var(--accent-blue);
+      }
+
+      .perf-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+
+      .perf-item .perf-label {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .perf-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+
+      .perf-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.5s ease;
+      }
+
+      .perf-bar-fill.fps {
+        background: var(--accent-green);
+      }
+      .perf-bar-fill.infer {
+        background: var(--accent-blue);
+      }
+      .perf-bar-fill.track {
+        background: #ff9800;
+      }
+      .perf-bar-fill.gpu {
+        background: var(--accent-red);
+      }
+
+      /* ===== Collapsible ===== */
+      .collapsible {
+        overflow: hidden;
+        transition: max-height 0.35s ease;
+      }
+      .collapsible.collapsed {
+        max-height: 0 !important;
+      }
+
+      /* ===== Footer ===== */
+      .footer {
+        text-align: center;
+        padding: 16px;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
+
+      /* ===== Responsive ===== */
+      @media (max-width: 1024px) {
+        .charts-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .cards-grid {
+          grid-template-columns: 1fr;
+        }
+        .header {
+          padding: 12px 16px;
+        }
+        .header h1 {
+          font-size: 1rem;
+        }
+        .main {
+          padding: 12px;
+        }
+        .stat-card .value {
+          font-size: 2.4rem;
+        }
+        .perf-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ===== Header ===== -->
+    <header class="header">
+      <div class="header-left">
+        <h1>실시간 사람 카운팅 시스템</h1>
+        <span class="camera-badge" id="cameraId">cam_01</span>
+      </div>
+      <div class="ws-status">
+        <div class="ws-dot" id="wsDot"></div>
+        <span id="wsLabel">연결 중…</span>
+      </div>
+    </header>
+
+    <!-- ===== Main ===== -->
+    <main class="main">
+      <!-- Stat Cards -->
+      <section class="cards-grid">
+        <div class="stat-card card-current">
+          <div class="label">현재 인원</div>
+          <div class="value" id="currentCount">0</div>
+        </div>
+        <div class="stat-card card-in">
+          <div class="label">누적 IN</div>
+          <div class="value" id="inCount">0</div>
+        </div>
+        <div class="stat-card card-out">
+          <div class="label">누적 OUT</div>
+          <div class="value" id="outCount">0</div>
+        </div>
+      </section>
+
+      <!-- Charts -->
+      <section class="charts-grid">
+        <div class="section-card">
+          <div class="section-header">
+            <h2>시간대별 인원 추이</h2>
+            <span style="font-size: 0.8rem; color: var(--text-secondary)"
+              >최근 1시간 · 5분 단위</span
+            >
+          </div>
+          <div class="section-body">
+            <div class="chart-container"><canvas id="lineChart"></canvas></div>
+          </div>
+        </div>
+        <div class="section-card">
+          <div class="section-header"><h2>IN / OUT 비율</h2></div>
+          <div class="section-body">
+            <div class="chart-container"><canvas id="donutChart"></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Video Stream -->
+      <section class="section-card">
+        <div class="section-header">
+          <h2>실시간 영상</h2>
+          <div class="ws-status">
+            <div class="ws-dot" id="streamDot"></div>
+            <span id="streamLabel">미연결</span>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="stream-wrapper" id="streamWrapper">
+            <div class="stream-placeholder" id="streamPlaceholder">
+              <div class="icon">&#x1F4F7;</div>
+              <div>영상 스트림 대기 중…</div>
+              <div style="font-size: 0.8rem; margin-top: 4px">
+                카메라가 연결되면 영상이 표시됩니다
+              </div>
+            </div>
+            <img id="streamImg" style="display: none" alt="실시간 영상" />
+            <div class="resize-handle" id="resizeHandle"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Events Table -->
+      <section class="section-card">
+        <div class="section-header">
+          <h2>최근 이벤트</h2>
+          <span
+            style="font-size: 0.8rem; color: var(--text-secondary)"
+            id="eventCountLabel"
+            >0건</span
+          >
+        </div>
+        <div class="events-wrapper" id="eventsWrapper">
+          <table class="events-table">
+            <thead>
+              <tr>
+                <th>시간</th>
+                <th>Person ID</th>
+                <th>방향</th>
+                <th>현재 인원</th>
+              </tr>
+            </thead>
+            <tbody id="eventsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Performance Panel -->
+      <section class="section-card">
+        <div class="section-header">
+          <h2>성능 모니터링</h2>
+          <button class="perf-toggle" id="perfToggle">접기</button>
+        </div>
+        <div class="collapsible" id="perfPanel" style="max-height: 400px">
+          <div class="section-body">
+            <div class="perf-grid">
+              <div class="perf-item">
+                <div class="perf-label">
+                  <span>FPS</span><span id="fpsVal">0</span>
+                </div>
+                <div class="perf-bar">
+                  <div
+                    class="perf-bar-fill fps"
+                    id="fpsBar"
+                    style="width: 0%"
+                  ></div>
+                </div>
+              </div>
+              <div class="perf-item">
+                <div class="perf-label">
+                  <span>YOLO 추론</span><span id="inferVal">0 ms</span>
+                </div>
+                <div class="perf-bar">
+                  <div
+                    class="perf-bar-fill infer"
+                    id="inferBar"
+                    style="width: 0%"
+                  ></div>
+                </div>
+              </div>
+              <div class="perf-item">
+                <div class="perf-label">
+                  <span>ByteTrack 추적</span><span id="trackVal">0 ms</span>
+                </div>
+                <div class="perf-bar">
+                  <div
+                    class="perf-bar-fill track"
+                    id="trackBar"
+                    style="width: 0%"
+                  ></div>
+                </div>
+              </div>
+              <div class="perf-item">
+                <div class="perf-label">
+                  <span>GPU 메모리</span><span id="gpuVal">0 / 0 MB</span>
+                </div>
+                <div class="perf-bar">
+                  <div
+                    class="perf-bar-fill gpu"
+                    id="gpuBar"
+                    style="width: 0%"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">People Counter Dashboard &middot; Phase 3</footer>
+
+    <!-- ===== JavaScript ===== -->
+    <script>
+      (function () {
+        "use strict";
+
+        // ---------- DOM refs ----------
+        var $currentCount = document.getElementById("currentCount");
+        var $inCount = document.getElementById("inCount");
+        var $outCount = document.getElementById("outCount");
+        var $cameraId = document.getElementById("cameraId");
+        var $wsDot = document.getElementById("wsDot");
+        var $wsLabel = document.getElementById("wsLabel");
+        var $eventsBody = document.getElementById("eventsBody");
+        var $eventCount = document.getElementById("eventCountLabel");
+
+        // Performance
+        var $fpsVal = document.getElementById("fpsVal");
+        var $fpsBar = document.getElementById("fpsBar");
+        var $inferVal = document.getElementById("inferVal");
+        var $inferBar = document.getElementById("inferBar");
+        var $trackVal = document.getElementById("trackVal");
+        var $trackBar = document.getElementById("trackBar");
+        var $gpuVal = document.getElementById("gpuVal");
+        var $gpuBar = document.getElementById("gpuBar");
+        var $perfToggle = document.getElementById("perfToggle");
+        var $perfPanel = document.getElementById("perfPanel");
+
+        // Stream
+        var $streamImg = document.getElementById("streamImg");
+        var $streamPlace = document.getElementById("streamPlaceholder");
+        var $streamDot = document.getElementById("streamDot");
+        var $streamLabel = document.getElementById("streamLabel");
+        var $streamWrap = document.getElementById("streamWrapper");
+        var $resizeHandle = document.getElementById("resizeHandle");
+
+        var MAX_EVENTS = 50;
+        var MAX_BACKOFF = 30000;
+
+        // ---------- Animate value helper ----------
+        function animateValue(el, newVal) {
+          var old = el.textContent;
+          el.textContent = newVal;
+          if (old !== String(newVal)) {
+            el.classList.remove("pulse");
+            void el.offsetWidth;
+            el.classList.add("pulse");
+          }
+        }
+
+        // ---------- Format time ----------
+        function fmtTime(dt) {
+          if (!dt) return "-";
+          var d = new Date(dt);
+          return d.toLocaleTimeString("ko-KR", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
+        }
+
+        // ---------- Safe text helper ----------
+        function escHtml(s) {
+          var d = document.createElement("div");
+          d.appendChild(document.createTextNode(s));
+          return d.innerHTML;
+        }
+
+        // ==========================================================
+        //  Step 3.2 — WebSocket real-time connection
+        // ==========================================================
+        var counterWs = null;
+        var counterRetry = 0;
+
+        function connectCounter() {
+          var proto = location.protocol === "https:" ? "wss:" : "ws:";
+          var url = proto + "//" + location.host + "/ws/counter";
+          counterWs = new WebSocket(url);
+
+          counterWs.onopen = function () {
+            counterRetry = 0;
+            $wsDot.classList.add("connected");
+            $wsLabel.textContent = "연결됨";
+          };
+
+          counterWs.onmessage = function (ev) {
+            try {
+              var data = JSON.parse(ev.data);
+              if (data.type === "count_update") {
+                animateValue($currentCount, data.current_count);
+                animateValue($inCount, data.in_count);
+                animateValue($outCount, data.out_count);
+                if (data.camera_id) $cameraId.textContent = data.camera_id;
+
+                addEventRow({
+                  time: new Date().toISOString(),
+                  person_id: data.person_id,
+                  direction: data.direction,
+                  current_count: data.current_count,
+                });
+
+                updateDonut(data.in_count, data.out_count);
+              }
+            } catch (e) {
+              /* ignore non-JSON */
+            }
+          };
+
+          counterWs.onclose = function () {
+            $wsDot.classList.remove("connected");
+            $wsLabel.textContent = "재연결 중…";
+            scheduleCounterReconnect();
+          };
+
+          counterWs.onerror = function () {
+            counterWs.close();
+          };
+        }
+
+        function scheduleCounterReconnect() {
+          var delay = Math.min(1000 * Math.pow(2, counterRetry), MAX_BACKOFF);
+          counterRetry++;
+          setTimeout(connectCounter, delay);
+        }
+
+        // ---------- Event table helpers ----------
+        function addEventRow(ev) {
+          var tr = document.createElement("tr");
+          tr.className = "new-row";
+          var dirCls = ev.direction === "IN" ? "dir-in" : "dir-out";
+          var dirText = escHtml(ev.direction);
+          tr.innerHTML =
+            "<td>" +
+            fmtTime(ev.time) +
+            "</td>" +
+            "<td>#" +
+            Number(ev.person_id) +
+            "</td>" +
+            '<td><span class="dir-badge ' +
+            dirCls +
+            '">' +
+            dirText +
+            "</span></td>" +
+            "<td>" +
+            Number(ev.current_count) +
+            "</td>";
+
+          $eventsBody.insertBefore(tr, $eventsBody.firstChild);
+
+          while ($eventsBody.children.length > MAX_EVENTS) {
+            $eventsBody.removeChild($eventsBody.lastChild);
+          }
+
+          $eventCount.textContent = $eventsBody.children.length + "건";
+        }
+
+        // ==========================================================
+        //  Step 3.3 — Chart.js charts
+        // ==========================================================
+
+        // --- Line chart (time-series, last 1 hour, 5-min buckets) ---
+        var lineCtx = document.getElementById("lineChart").getContext("2d");
+        var lineChart = new Chart(lineCtx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "IN",
+                data: [],
+                borderColor: "rgba(0, 230, 118, 0.9)",
+                backgroundColor: "rgba(0, 230, 118, 0.1)",
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointBackgroundColor: "rgba(0, 230, 118, 1)",
+              },
+              {
+                label: "OUT",
+                data: [],
+                borderColor: "rgba(233, 69, 96, 0.9)",
+                backgroundColor: "rgba(233, 69, 96, 0.1)",
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointBackgroundColor: "rgba(233, 69, 96, 1)",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { labels: { color: "#a0aec0", font: { size: 12 } } },
+            },
+            scales: {
+              x: {
+                ticks: {
+                  color: "#a0aec0",
+                  maxRotation: 45,
+                  font: { size: 10 },
+                },
+                grid: { color: "rgba(255,255,255,0.04)" },
+              },
+              y: {
+                beginAtZero: true,
+                ticks: { color: "#a0aec0", stepSize: 1, font: { size: 11 } },
+                grid: { color: "rgba(255,255,255,0.06)" },
+              },
+            },
+          },
+        });
+
+        // --- Donut chart (IN vs OUT) ---
+        var donutCtx = document.getElementById("donutChart").getContext("2d");
+        var donutChart = new Chart(donutCtx, {
+          type: "doughnut",
+          data: {
+            labels: ["IN", "OUT"],
+            datasets: [
+              {
+                data: [0, 0],
+                backgroundColor: ["rgba(0,230,118,0.8)", "rgba(233,69,96,0.8)"],
+                borderColor: ["rgba(0,230,118,1)", "rgba(233,69,96,1)"],
+                borderWidth: 2,
+                hoverOffset: 8,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: "65%",
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: { color: "#a0aec0", font: { size: 12 }, padding: 16 },
+              },
+            },
+          },
+        });
+
+        function updateDonut(inVal, outVal) {
+          donutChart.data.datasets[0].data = [inVal, outVal];
+          donutChart.update("none");
+        }
+
+        // --- Fetch events for line chart ---
+        function fetchLineChartData() {
+          var now = new Date();
+          var oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+          var params = new URLSearchParams({
+            start: oneHourAgo.toISOString(),
+            end: now.toISOString(),
+            limit: "1000",
+          });
+          fetch("/api/events?" + params)
+            .then(function (res) {
+              return res.ok ? res.json() : Promise.reject();
+            })
+            .then(function (events) {
+              var buckets = {};
+              for (var i = 0; i < 12; i++) {
+                var t = new Date(oneHourAgo.getTime() + i * 5 * 60 * 1000);
+                var key =
+                  String(t.getHours()).padStart(2, "0") +
+                  ":" +
+                  String(Math.floor(t.getMinutes() / 5) * 5).padStart(2, "0");
+                buckets[key] = { in_: 0, out_: 0 };
+              }
+
+              events.forEach(function (ev) {
+                var d = new Date(ev.created_at);
+                var mins = Math.floor(d.getMinutes() / 5) * 5;
+                var k =
+                  String(d.getHours()).padStart(2, "0") +
+                  ":" +
+                  String(mins).padStart(2, "0");
+                if (buckets[k]) {
+                  if (ev.direction === "IN") buckets[k].in_++;
+                  else if (ev.direction === "OUT") buckets[k].out_++;
+                }
+              });
+
+              var labels = Object.keys(buckets);
+              lineChart.data.labels = labels;
+              lineChart.data.datasets[0].data = labels.map(function (k) {
+                return buckets[k].in_;
+              });
+              lineChart.data.datasets[1].data = labels.map(function (k) {
+                return buckets[k].out_;
+              });
+              lineChart.update("none");
+            })
+            .catch(function () {
+              /* silently fail */
+            });
+        }
+
+        // ==========================================================
+        //  Step 3.4 — Performance monitoring (5s polling)
+        // ==========================================================
+        function fetchStats() {
+          fetch("/api/stats")
+            .then(function (res) {
+              return res.ok ? res.json() : Promise.reject();
+            })
+            .then(function (s) {
+              var fps = s.fps || 0;
+              $fpsVal.textContent = fps.toFixed(1);
+              $fpsBar.style.width = Math.min((fps / 30) * 100, 100) + "%";
+
+              var infer = s.inference_ms || 0;
+              $inferVal.textContent = infer.toFixed(1) + " ms";
+              $inferBar.style.width = Math.min((infer / 100) * 100, 100) + "%";
+
+              var track = s.tracking_ms || 0;
+              $trackVal.textContent = track.toFixed(1) + " ms";
+              $trackBar.style.width = Math.min((track / 50) * 100, 100) + "%";
+
+              var gpuUsed = s.gpu_memory_used_mb || 0;
+              var gpuTotal = s.gpu_memory_total_mb || 1;
+              $gpuVal.textContent =
+                gpuUsed.toFixed(0) + " / " + gpuTotal.toFixed(0) + " MB";
+              $gpuBar.style.width =
+                Math.min((gpuUsed / gpuTotal) * 100, 100) + "%";
+            })
+            .catch(function () {
+              /* silently fail */
+            });
+        }
+
+        // Toggle performance panel
+        $perfToggle.addEventListener("click", function () {
+          $perfPanel.classList.toggle("collapsed");
+          $perfToggle.textContent = $perfPanel.classList.contains("collapsed")
+            ? "펼치기"
+            : "접기";
+        });
+
+        // ==========================================================
+        //  Step 3.5 — Video streaming via WebSocket
+        // ==========================================================
+        var streamWs = null;
+        var streamRetry = 0;
+        var lastBlobUrl = null;
+
+        function connectStream() {
+          var proto = location.protocol === "https:" ? "wss:" : "ws:";
+          var url = proto + "//" + location.host + "/ws/stream";
+          streamWs = new WebSocket(url);
+          streamWs.binaryType = "arraybuffer";
+
+          streamWs.onopen = function () {
+            streamRetry = 0;
+            $streamDot.classList.add("connected");
+            $streamLabel.textContent = "스트리밍 중";
+          };
+
+          streamWs.onmessage = function (ev) {
+            if (ev.data instanceof ArrayBuffer) {
+              if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+              var blob = new Blob([ev.data], { type: "image/jpeg" });
+              lastBlobUrl = URL.createObjectURL(blob);
+              $streamImg.src = lastBlobUrl;
+              $streamImg.style.display = "block";
+              $streamPlace.style.display = "none";
+            }
+          };
+
+          streamWs.onclose = function () {
+            $streamDot.classList.remove("connected");
+            $streamLabel.textContent = "미연결";
+            var delay = Math.min(1000 * Math.pow(2, streamRetry), MAX_BACKOFF);
+            streamRetry++;
+            setTimeout(connectStream, delay);
+          };
+
+          streamWs.onerror = function () {
+            streamWs.close();
+          };
+        }
+
+        // --- Stream panel resize ---
+        (function () {
+          var startY = 0,
+            startH = 0,
+            dragging = false;
+
+          $resizeHandle.addEventListener("mousedown", function (e) {
+            dragging = true;
+            startY = e.clientY;
+            startH = $streamWrap.offsetHeight;
+            e.preventDefault();
+          });
+
+          document.addEventListener("mousemove", function (e) {
+            if (!dragging) return;
+            var newH = startH + (e.clientY - startY);
+            if (newH >= 150) $streamWrap.style.minHeight = newH + "px";
+          });
+
+          document.addEventListener("mouseup", function () {
+            dragging = false;
+          });
+        })();
+
+        // ==========================================================
+        //  Initial load & intervals
+        // ==========================================================
+        function loadInitialStatus() {
+          fetch("/api/status")
+            .then(function (res) {
+              return res.ok ? res.json() : Promise.reject();
+            })
+            .then(function (data) {
+              animateValue($currentCount, data.current_count);
+              animateValue($inCount, data.in_count);
+              animateValue($outCount, data.out_count);
+              if (data.camera_id) $cameraId.textContent = data.camera_id;
+              updateDonut(data.in_count, data.out_count);
+            })
+            .catch(function () {});
+        }
+
+        function loadRecentEvents() {
+          fetch("/api/events?limit=50")
+            .then(function (res) {
+              return res.ok ? res.json() : Promise.reject();
+            })
+            .then(function (events) {
+              events.reverse().forEach(function (ev) {
+                addEventRow({
+                  time: ev.created_at,
+                  person_id: ev.person_id,
+                  direction: ev.direction,
+                  current_count: ev.current_count,
+                });
+              });
+            })
+            .catch(function () {});
+        }
+
+        // Boot
+        loadInitialStatus();
+        loadRecentEvents();
+        fetchLineChartData();
+        fetchStats();
+
+        connectCounter();
+        connectStream();
+
+        setInterval(fetchLineChartData, 30000); // 30s
+        setInterval(fetchStats, 5000); // 5s
+      })();
+    </script>
+  </body>
+</html>
