@@ -2,21 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
-import threading
 import time
-from datetime import datetime
 
 import cv2
 import numpy as np
 import supervision as sv
-import uvicorn
 from loguru import logger
 
 from alert import KakaoAlert
 from config import settings
 from counter import LineCrossCounter
-from dashboard.app import app, counter_manager, set_performance_monitor, stream_manager
 from database import SessionLocal, init_db, restore_count, save_event
 from detector import PersonDetector
 from monitor import PerformanceMonitor
@@ -30,18 +25,6 @@ def _parse_video_source(source: str):
         return int(source)
     except ValueError:
         return source
-
-
-async def _broadcast_stream_bytes(data: bytes) -> None:
-    """Send binary JPEG data to all stream WebSocket clients."""
-    stale = []
-    for ws in stream_manager.active_connections:
-        try:
-            await ws.send_bytes(data)
-        except Exception:
-            stale.append(ws)
-    for ws in stale:
-        stream_manager.disconnect(ws)
 
 
 def _draw_overlay(
@@ -141,24 +124,7 @@ def main() -> None:
     alert = KakaoAlert()
     logger.info("All modules initialized — restored count={}", restored_count)
 
-    # ---- 5. FastAPI dashboard in daemon thread ----
-    loop = asyncio.new_event_loop()
-    dash_port = settings.DASHBOARD_PORT
-
-    def _run_server() -> None:
-        asyncio.set_event_loop(loop)
-        config = uvicorn.Config(app, host="0.0.0.0", port=dash_port, log_level="info")
-        server = uvicorn.Server(config)
-        loop.run_until_complete(server.serve())
-
-    server_thread = threading.Thread(target=_run_server, daemon=True)
-    server_thread.start()
-    logger.info("Dashboard server started on http://0.0.0.0:{}", dash_port)
-
-    # ---- 6. Inject monitor into dashboard ----
-    set_performance_monitor(monitor)
-
-    # ---- 7. Video capture ----
+    # ---- 5. Video capture ----
     source = _parse_video_source(settings.VIDEO_SOURCE)
     cap = cv2.VideoCapture(source)
     if not cap.isOpened():
@@ -234,54 +200,23 @@ def main() -> None:
                 except Exception as exc:
                     logger.error("Alert check failed: {}", exc)
 
-                # WebSocket counter broadcast
-                ws_msg = {
-                    "type": "count_event",
-                    "person_id": event.person_id,
-                    "direction": event.direction,
-                    "count_change": event.count_change,
-                    "current_count": counter.current_count,
-                    "in_count": counter.in_count,
-                    "out_count": counter.out_count,
-                    "confidence": event.confidence,
-                    "timestamp": datetime.now().isoformat(),
-                }
-                try:
-                    asyncio.run_coroutine_threadsafe(
-                        counter_manager.broadcast(ws_msg), loop
-                    )
-                except Exception as exc:
-                    logger.error("WS counter broadcast failed: {}", exc)
-
             # g. Draw overlay
             display_frame = frame.copy()
             _draw_overlay(display_frame, counter, tracked, monitor)
 
-            # h. Stream frame via WebSocket (JPEG bytes)
-            ok, jpeg = cv2.imencode(
-                ".jpg", display_frame, [cv2.IMWRITE_JPEG_QUALITY, 70]
-            )
-            if ok:
-                try:
-                    asyncio.run_coroutine_threadsafe(
-                        _broadcast_stream_bytes(jpeg.tobytes()), loop
-                    )
-                except Exception as exc:
-                    logger.error("WS stream broadcast failed: {}", exc)
-
-            # i. Local display (skip if headless OpenCV)
+            # h. Local display (skip if headless OpenCV)
             try:
                 cv2.imshow("People Counter", display_frame)
             except cv2.error:
                 pass  # headless build — no GUI
 
-            # j. End frame timing
+            # i. End frame timing
             monitor.end_frame()
 
-            # k. Advance frame counter
+            # j. Advance frame counter
             tracker.increment_frame()
 
-            # l. Quit on 'q' (skip if headless)
+            # k. Quit on 'q' (skip if headless)
             try:
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     logger.info("Quit key pressed — shutting down")

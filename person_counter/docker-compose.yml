@@ -25,8 +25,6 @@ services:
       - DB_NAME=people_counter
       - DB_USER=postgres
       - DB_PASSWORD=1111
-    ports:
-      - "8000:8000"
     volumes:
       - ./snapshots:/app/snapshots
       - ./models:/app/models

@@ -45,9 +45,6 @@ class Settings(BaseSettings):
     ALERT_THRESHOLD: int = 50
     ALERT_COOLDOWN_SEC: int = 300
 
-    # 대시보드
-    DASHBOARD_PORT: int = 8000
-
     # YOLO
     YOLO_MODEL: str = "yolov8n.pt"
     CONFIDENCE_THRESHOLD: float = 0.5
