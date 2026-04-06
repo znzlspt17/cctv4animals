@@ -19,13 +19,6 @@ class PersonUpdate(BaseModel):
     extra_info: dict | None = None
 
 
-class AlertRuleCreate(BaseModel):
-    person_id: int
-    alert_type: str = "toast"
-    message: str
-    is_active: bool = True
-
-
 class LogQueryParams(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
@@ -70,7 +63,6 @@ class RecognitionResult(BaseModel):
     display_name: str | None = None
     confidence: float
     bbox: list[int] = []
-    alerts: list[dict] = []
 
 
 class RecognizeResponse(BaseModel):

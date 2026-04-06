@@ -52,14 +52,14 @@ def test_seq_repo_interface():
     assert hasattr(SeqRepo, "next_person_number")
 
 
-# ── MySQL 모듈 import 확인 ──
+# ── Postgres 모듈 import 확인 ──
 
 
-def test_mysql_repo_importable():
-    """mysql_repo 모듈이 import 가능한지 확인."""
-    from server.repositories import mysql_repo  # noqa: F401
+def test_postgres_repo_importable():
+    """postgres_repo 모듈이 import 가능한지 확인."""
+    from server.repositories import postgres_repo  # noqa: F401
 
-    assert hasattr(mysql_repo, "MySQLRepository")
+    assert hasattr(postgres_repo, "PostgresRepository")
 
 
 # ── get_repository 팩토리 ──

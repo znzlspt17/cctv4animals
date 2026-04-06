@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
-from server.config import Settings
+from server.config import settings
 from server.schemas import RecognizeResponse, RegisterResponse
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,6 @@ async def recognize(request: Request, file: UploadFile = File(...)):
     results = face_svc.search_face(image_bytes, repo)
 
     # 인식 로그 기록 (매칭된 얼굴만)
-    settings = Settings()
     if settings.ENABLE_RECOGNITION_LOG:
         for r in results:
             if r["person_id"] is not None:
@@ -104,74 +103,3 @@ async def register(
         face_image_id=result["face_image_id"],
         message=result["message"],
     )
-
-
-@router.post("/register/multi-angle")
-async def register_multi_angle(
-    request: Request,
-    files: list[UploadFile] = File(...),
-    person_id: int | None = Form(None),
-):
-    """여러 각도/조명 이미지를 한 번에 등록."""
-    repo = request.app.state.repo
-    face_svc = request.app.state.face_service
-
-    if not files:
-        raise HTTPException(status_code=400, detail="이미지를 1장 이상 업로드하세요")
-
-    # person_id 없으면 새 인물 생성
-    auto_created = False
-    if person_id is None:
-        seq_num = repo.seq.next_person_number()
-        person_name = f"person{seq_num}"
-        person = repo.person.create(name=person_name)
-        person_id = person.id
-        auto_created = True
-        logger.info(
-            "Auto-created person for multi-angle: %s (id=%d)", person_name, person_id
-        )
-
-    images_bytes = [await f.read() for f in files]
-
-    try:
-        result = face_svc.register_multi_angle(
-            images_list=images_bytes,
-            repo=repo,
-            person_id=person_id,
-        )
-    except Exception as e:
-        # 전부 실패 시 자동 생성된 Person 롤백
-        if auto_created:
-            try:
-                face_svc.delete_person_faces(person_id, repo)
-                repo.person.delete(person_id)
-                logger.info(
-                    "Rolled back person_id=%d (multi)",
-                    person_id,
-                )
-            except Exception as rollback_err:
-                logger.warning(
-                    "Rollback failed for person_id=%d: %s",
-                    person_id,
-                    rollback_err,
-                )
-        raise HTTPException(status_code=400, detail=str(e))
-
-    # 부분 성공 시(등록된 얼굴이 하나도 없으면) Person 롤백
-    registered = result.get("registered_count", len(result.get("results", [])))
-    if auto_created and registered == 0:
-        try:
-            face_svc.delete_person_faces(person_id, repo)
-            repo.person.delete(person_id)
-            logger.info(
-                "Rolled back person_id=%d (no faces)",
-                person_id,
-            )
-        except Exception as rollback_err:
-            logger.warning(
-                "Rollback failed for person_id=%d: %s",
-                person_id,
-                rollback_err,
-            )
-
-    return result

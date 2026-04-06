@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-import server.services.animal_service as animal_module
-from server.services.animal_service import (
+import server.services.animal.animal_service as animal_module
+from server.services.animal.animal_service import (
     AnimalDetectionResult,
     AnimalService,
     Detection,
@@ -142,7 +142,7 @@ def test_load_file_not_found(svc):
     """MODEL_PATH 없으면 FileNotFoundError."""
     mock_path = MagicMock()
     mock_path.exists.return_value = False
-    with patch("server.services.animal_service.MODEL_PATH", mock_path):
+    with patch("server.services.animal.animal_service.MODEL_PATH", mock_path):
         with pytest.raises(FileNotFoundError):
             svc.load()
 
@@ -154,7 +154,7 @@ def test_load_success(svc):
     mock_path = MagicMock()
     mock_path.exists.return_value = True
 
-    with patch("server.services.animal_service.MODEL_PATH", mock_path):
+    with patch("server.services.animal.animal_service.MODEL_PATH", mock_path):
         with patch.dict(sys.modules, {"ultralytics": mock_ultralytics}):
             svc.load()
 
@@ -168,7 +168,7 @@ def test_load_idempotent(svc):
     mock_path = MagicMock()
     mock_path.exists.return_value = True
 
-    with patch("server.services.animal_service.MODEL_PATH", mock_path):
+    with patch("server.services.animal.animal_service.MODEL_PATH", mock_path):
         with patch.dict(sys.modules, {"ultralytics": mock_ultralytics}):
             svc.load()
             svc.load()  # second call — should be no-op
@@ -235,7 +235,7 @@ def test_is_ready_after_load(svc):
     mock_path = MagicMock()
     mock_path.exists.return_value = True
 
-    with patch("server.services.animal_service.MODEL_PATH", mock_path):
+    with patch("server.services.animal.animal_service.MODEL_PATH", mock_path):
         with patch.dict(sys.modules, {"ultralytics": mock_ultralytics}):
             svc.load()
 

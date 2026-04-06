@@ -1,21 +1,30 @@
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-markers = [
-    "mysql: MySQL backend tests",
-    "redis: Redis backend tests",
-    "slow: slow-running tests",
+[project]
+name = "deepface-live"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "av>=16.1.0",
+    "deepface>=0.0.99",
+    "faiss-cpu>=1.13.2",
+    "fastapi>=0.135.3",
+    "numpy>=2.4.4",
+    "pgvector>=0.4.2",
+    "psycopg2-binary>=2.9.11",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "python-multipart>=0.0.24",
+    "sqlalchemy>=2.0.49",
+    "streamlit>=1.56.0",
+    "streamlit-webrtc>=0.64.5",
+    "supervision>=0.27.0.post2",
+    "tf-keras>=2.21.0",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+    "ultralytics>=8.4.33",
+    "uvicorn[standard]>=0.43.0",
 ]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-]
-
-[tool.coverage.run]
-source = ["server"]
-omit = ["tests/*"]
-
-[tool.coverage.report]
-show_missing = true
-fail_under = 70
 
 [tool.uv.sources]
 torch = { index = "pytorch" }
@@ -26,5 +35,8 @@ name = "pytorch"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
-[tool.pyright]
-pythonVersion = "3.12"
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+]

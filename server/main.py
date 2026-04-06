@@ -31,16 +31,34 @@ async def lifespan(app: FastAPI):
     logger.info("Repository initialized (backend=postgres)")
 
     # 4) FaceService
-    from server.services.face_service import face_service
+    from server.services.face.face_service import face_service
 
     face_service.warmup()
     face_service.load_embedding_cache(app.state.repo)
-    face_service.load_alert_cache(app.state.repo)
     app.state.face_service = face_service
+
+    # 5) PersonCounterService (백그라운드 스레드)
+    from server.services.person.person_service import person_counter_service
+
+    person_counter_service.start(app.state.repo)
+    app.state.person_counter_service = person_counter_service
+
+    # 6) AnimalService
+    from server.services.animal.animal_service import animal_service
+
+    animal_service.warmup()
+    app.state.animal_service = animal_service
+
+    # 7) PlantService
+    from server.services.plant.plant_service import plant_service
+
+    plant_service.warmup()
+    app.state.plant_service = plant_service
 
     logger.info("Server ready.")
     yield
     logger.info("Shutting down...")
+    person_counter_service.stop()
 
 
 def _ensure_person_seq():
@@ -88,8 +106,11 @@ async def connection_error_handler(request: Request, exc: ConnectionError):
 
 
 # 라우터 등록
-from server.routers import log, person, recognition  # noqa: E402
+from server.routers import animal, log, person, person_count, plant, recognition  # noqa: E402
 
 app.include_router(person.router, prefix="/api")
 app.include_router(log.router, prefix="/api")
 app.include_router(recognition.router, prefix="/api")
+app.include_router(person_count.router, prefix="/api")
+app.include_router(animal.router, prefix="/api")
+app.include_router(plant.router, prefix="/api")

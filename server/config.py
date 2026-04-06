@@ -5,10 +5,9 @@ class Settings(BaseSettings):
     # PostgreSQL (원격)
     DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@100.95.34.69:5555/cctv?sslmode=disable"
 
-    # FastAPI / Streamlit
+    # FastAPI
     FASTAPI_HOST: str = "0.0.0.0"
     FASTAPI_PORT: int = 8000
-    STREAMLIT_PORT: int = 8501
 
     # Face Recognition
     FACE_DB_PATH: str = "face_db"
@@ -44,6 +43,28 @@ class Settings(BaseSettings):
     LOG_FILE_BACKUP_COUNT: int = 5
     LOG_RETENTION_DAYS: int = 30
     LOG_DEDUP_SECONDS: int = 10
+
+    # Animal line crossing
+    ANIMAL_LINE_START_X: int = 0
+    ANIMAL_LINE_START_Y: int = 860
+    ANIMAL_LINE_END_X: int = 1920
+    ANIMAL_LINE_END_Y: int = 860
+
+    # Person counter
+    PERSON_VIDEO_SOURCE: str = "0"
+    PERSON_CAMERA_ID: str = "cam_01"
+    PERSON_LINE_START_X: int = 0
+    PERSON_LINE_START_Y: int = 360
+    PERSON_LINE_END_X: int = 1280
+    PERSON_LINE_END_Y: int = 360
+    PERSON_FRAME_SKIP: int = 10
+    PERSON_ROI_X: int = 0
+    PERSON_ROI_Y: int = 100
+    PERSON_ROI_W: int = 1280
+    PERSON_ROI_H: int = 520
+    PERSON_YOLO_MODEL: str = "models/4people-yolo26n.pt"
+    PERSON_CONFIDENCE_THRESHOLD: float = 0.5
+    PERSON_SNAPSHOT_DIR: str = "snapshots"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from server.services.face_service import FaceService
+from server.services.face.face_service import FaceService
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def svc():
 # ── Warmup ──
 
 
-@patch("server.services.face_service.DeepFace")
+@patch("server.services.face.face_service.DeepFace")
 def test_warmup(mock_deepface, svc):
     svc.warmup()
     mock_deepface.represent.assert_called_once()
@@ -71,7 +71,7 @@ def test_check_duplicate_found(svc):
         },
     ]
     repo = MagicMock()
-    with patch("server.services.face_service.settings") as mock_settings:
+    with patch("server.services.face.face_service.settings") as mock_settings:
         mock_settings.RECOGNITION_THRESHOLD = 0.40
         mock_settings.DUPLICATE_THRESHOLD = 0.40
         is_dup, person_id, distance = svc.check_duplicate(emb, repo)
@@ -92,7 +92,7 @@ def test_check_duplicate_not_found(svc):
         },
     ]
     repo = MagicMock()
-    with patch("server.services.face_service.settings") as mock_settings:
+    with patch("server.services.face.face_service.settings") as mock_settings:
         mock_settings.RECOGNITION_THRESHOLD = 0.40
         mock_settings.DUPLICATE_THRESHOLD = 0.40
         is_dup, person_id, distance = svc.check_duplicate(emb, repo)
@@ -111,7 +111,7 @@ def test_check_duplicate_exclude_person(svc):
         },
     ]
     repo = MagicMock()
-    with patch("server.services.face_service.settings") as mock_settings:
+    with patch("server.services.face.face_service.settings") as mock_settings:
         mock_settings.RECOGNITION_THRESHOLD = 0.40
         is_dup, person_id, distance = svc.check_duplicate(
             emb,

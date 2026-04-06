@@ -12,9 +12,42 @@ ALTER TABLE face_images ADD COLUMN IF NOT EXISTS embedding_vec vector(512);
 CREATE INDEX IF NOT EXISTS idx_face_images_embedding_vec
     ON face_images USING hnsw (embedding_vec vector_cosine_ops);
 
--- 4. 기존 BYTEA 임베딩 → vector 컬럼으로 마이그레이션
---    (Python 측에서 수행 권장 — numpy frombuffer → list 변환 후 UPDATE)
---    아래는 참고용 예시 (실제 데이터 구조에 따라 조정 필요)
--- UPDATE face_images
---    SET embedding_vec = embedding::vector
---  WHERE embedding IS NOT NULL AND embedding_vec IS NULL;
+-- 4. 동물 탐지 로그 테이블
+CREATE TABLE IF NOT EXISTS animal_detection_logs (
+    id          BIGSERIAL PRIMARY KEY,
+    source      VARCHAR(50)  NOT NULL DEFAULT 'api',
+    class_name  VARCHAR(100) NOT NULL,
+    confidence  FLOAT        NOT NULL,
+    bbox_x1     FLOAT,
+    bbox_y1     FLOAT,
+    bbox_x2     FLOAT,
+    bbox_y2     FLOAT,
+    detected_at TIMESTAMP    NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_animal_logs_class_at ON animal_detection_logs (class_name, detected_at);
+CREATE INDEX IF NOT EXISTS ix_animal_logs_detected_at ON animal_detection_logs (detected_at);
+
+-- 5. 식물 탐지 로그 테이블
+CREATE TABLE IF NOT EXISTS plant_detection_logs (
+    id                  BIGSERIAL PRIMARY KEY,
+    source              VARCHAR(50)  NOT NULL DEFAULT 'api',
+    class_name          VARCHAR(100) NOT NULL,
+    disease_code        INTEGER,
+    disease_label       VARCHAR(100),
+    confidence          FLOAT        NOT NULL,
+    bbox_x1             FLOAT,
+    bbox_y1             FLOAT,
+    bbox_x2             FLOAT,
+    bbox_y2             FLOAT,
+    crop_type           INTEGER,
+    crop_name           VARCHAR(100),
+    shooting_type       INTEGER,
+    shooting_type_name  VARCHAR(50),
+    grow_stage          INTEGER,
+    grow_stage_name     VARCHAR(50),
+    area                INTEGER,
+    area_name           VARCHAR(50),
+    detected_at         TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_plant_logs_class_at ON plant_detection_logs (class_name, detected_at);
+CREATE INDEX IF NOT EXISTS ix_plant_logs_detected_at ON plant_detection_logs (detected_at);

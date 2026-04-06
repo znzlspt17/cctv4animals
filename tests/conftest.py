@@ -101,11 +101,6 @@ def mock_repo():
     repo.recognition_log.cleanup.return_value = 0
     repo.recognition_log.is_duplicate_log.return_value = False
 
-    repo.alert_rule.get_active_rules.return_value = []
-    repo.alert_rule.upsert.return_value = MagicMock()
-    repo.alert_rule.get_by_person.return_value = []
-    repo.alert_rule.delete.return_value = None
-
     repo.seq.next_person_number.return_value = 1
     return repo
 

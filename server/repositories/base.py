@@ -68,29 +68,75 @@ class RecognitionLogRepo(ABC):
     def is_duplicate_log(self, person_id: int, dedup_seconds: int) -> bool: ...
 
 
-class AlertRuleRepo(ABC):
-    @abstractmethod
-    def get_active_rules(self, person_id: int): ...
-
-    @abstractmethod
-    def upsert(
-        self,
-        person_id: int,
-        alert_type: str,
-        message: str,
-        is_active: bool = True,
-    ): ...
-
-    @abstractmethod
-    def get_by_person(self, person_id: int): ...
-
-    @abstractmethod
-    def delete(self, rule_id: int) -> None: ...
-
-
 class SeqRepo(ABC):
     @abstractmethod
     def next_person_number(self) -> int: ...
+
+
+class TrackingEventRepo(ABC):
+    @abstractmethod
+    def save(
+        self,
+        camera_id: str,
+        tracker_id: int,
+        direction: str,
+        count_change: int,
+        current_count: int,
+        confidence: float,
+        bbox_x: int,
+        bbox_y: int,
+        bbox_w: int,
+        bbox_h: int,
+        snapshot_path: str = "",
+    ): ...
+
+    @abstractmethod
+    def get_current_count(self, camera_id: str) -> int: ...
+
+    @abstractmethod
+    def get_events(
+        self,
+        camera_id: str,
+        limit: int = 100,
+    ) -> list: ...
+
+
+class AnimalDetectionLogRepo(ABC):
+    @abstractmethod
+    def create(
+        self,
+        class_name: str,
+        confidence: float,
+        bbox: list[float],
+        source: str = "api",
+    ): ...
+
+    @abstractmethod
+    def query(self, limit: int = 100) -> list: ...
+
+
+class PlantDetectionLogRepo(ABC):
+    @abstractmethod
+    def create(
+        self,
+        class_name: str,
+        confidence: float,
+        bbox: list[float],
+        disease_code: int | None = None,
+        disease_label: str | None = None,
+        source: str = "api",
+        crop_type: int | None = None,
+        crop_name: str | None = None,
+        shooting_type: int | None = None,
+        shooting_type_name: str | None = None,
+        grow_stage: int | None = None,
+        grow_stage_name: str | None = None,
+        area: int | None = None,
+        area_name: str | None = None,
+    ): ...
+
+    @abstractmethod
+    def query(self, limit: int = 100) -> list: ...
 
 
 class AbstractRepository(ABC):
@@ -110,8 +156,16 @@ class AbstractRepository(ABC):
 
     @property
     @abstractmethod
-    def alert_rule(self) -> AlertRuleRepo: ...
+    def seq(self) -> SeqRepo: ...
 
     @property
     @abstractmethod
-    def seq(self) -> SeqRepo: ...
+    def tracking_event(self) -> TrackingEventRepo: ...
+
+    @property
+    @abstractmethod
+    def animal_detection_log(self) -> AnimalDetectionLogRepo: ...
+
+    @property
+    @abstractmethod
+    def plant_detection_log(self) -> PlantDetectionLogRepo: ...
