@@ -12,25 +12,41 @@ logger = logging.getLogger(__name__)
 
 
 class PersonDetector:
-    """YOLOv8 기반 사람 감지기. ROI 크롭 + 원본 좌표 복원."""
+    """YOLOv8 기반 사람 감지기. ROI 크롭 + 원본 좌표 복원.
 
-    def __init__(self) -> None:
+    Args:
+        roi: (x, y, w, h) 튜플. None 이면 settings.PERSON_ROI_* 전역값 사용.
+        confidence: 탐지 임계값. None 이면 settings.PERSON_CONFIDENCE_THRESHOLD 사용.
+    """
+
+    def __init__(
+        self,
+        roi: tuple[int, int, int, int] | None = None,
+        confidence: float | None = None,
+    ) -> None:
         model_path = settings.PERSON_YOLO_MODEL
         self._model = YOLO(model_path)
-        self._confidence = settings.PERSON_CONFIDENCE_THRESHOLD
+        self._confidence = confidence if confidence is not None else settings.PERSON_CONFIDENCE_THRESHOLD
+        if roi is not None:
+            self._roi = roi
+        else:
+            self._roi = (
+                settings.PERSON_ROI_X,
+                settings.PERSON_ROI_Y,
+                settings.PERSON_ROI_W,
+                settings.PERSON_ROI_H,
+            )
         self._model.to("cuda:0")
         logger.info(
-            "PersonDetector initialized: model=%s confidence=%.2f",
+            "PersonDetector initialized: model=%s confidence=%.2f roi=%s",
             model_path,
             self._confidence,
+            self._roi,
         )
 
     def detect(self, frame: np.ndarray) -> sv.Detections:
         """ROI 영역을 크롭해 YOLO 추론 후 원본 좌표로 변환해 반환."""
-        rx = settings.PERSON_ROI_X
-        ry = settings.PERSON_ROI_Y
-        rw = settings.PERSON_ROI_W
-        rh = settings.PERSON_ROI_H
+        rx, ry, rw, rh = self._roi
 
         cropped = frame[ry: ry + rh, rx: rx + rw]
         results = self._model(cropped, conf=self._confidence, device="cuda:0", verbose=False)

@@ -37,11 +37,19 @@ async def lifespan(app: FastAPI):
     face_service.load_embedding_cache(app.state.repo)
     app.state.face_service = face_service
 
-    # 5) PersonCounterService (백그라운드 스레드)
-    from server.services.person.person_service import person_counter_service
+    # 5) CameraManager — 여러 대의 카메라를 동시에 관리
+    from server.config import get_camera_configs
+    from server.services.person.camera_manager import CameraManager
 
-    person_counter_service.start(app.state.repo)
-    app.state.person_counter_service = person_counter_service
+    camera_manager = CameraManager()
+    camera_configs = get_camera_configs()
+    camera_manager.start_all(camera_configs, app.state.repo)
+    app.state.camera_manager = camera_manager
+    logger.info(
+        "CameraManager started: %d camera(s) — %s",
+        len(camera_configs),
+        [c.camera_id for c in camera_configs],
+    )
 
     # 6) AnimalService
     from server.services.animal.animal_service import animal_service
@@ -58,7 +66,7 @@ async def lifespan(app: FastAPI):
     logger.info("Server ready.")
     yield
     logger.info("Shutting down...")
-    person_counter_service.stop()
+    camera_manager.stop_all()
 
 
 def _ensure_person_seq():

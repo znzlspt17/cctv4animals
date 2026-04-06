@@ -98,7 +98,7 @@ class TrackingEventRepo(ABC):
         self,
         camera_id: str,
         limit: int = 100,
-    ) -> list: ...
+    ) -> list[dict]: ...
 
 
 class AnimalDetectionLogRepo(ABC):

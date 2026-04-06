@@ -111,6 +111,7 @@ async def register(
             raise HTTPException(status_code=409, detail=msg.split(":", 1)[1])
         raise HTTPException(status_code=400, detail=msg.split(":", 1)[-1])
 
+    assert person_id is not None  # auto_created 경로에서 반드시 할당됨
     return RegisterResponse(
         person_id=person_id,
         person_name=person_name,

@@ -256,15 +256,29 @@ class _PostgresTrackingEventRepo(TrackingEventRepo):
             )
             return row[0] if row else 0
 
-    def get_events(self, camera_id: str, limit: int = 100) -> list:
+    def get_events(self, camera_id: str, limit: int = 100) -> list[dict]:
         with SessionLocal() as db:
-            return (
+            rows = (
                 db.query(TrackingEvent)
                 .filter(TrackingEvent.camera_id == camera_id)
                 .order_by(TrackingEvent.id.desc())
                 .limit(limit)
                 .all()
             )
+            return [
+                {
+                    "id": r.id,
+                    "camera_id": r.camera_id,
+                    "tracker_id": r.tracker_id,
+                    "direction": r.direction,
+                    "count_change": r.count_change,
+                    "current_count": r.current_count,
+                    "confidence": r.confidence,
+                    "snapshot_path": r.snapshot_path,
+                    "created_at": r.created_at,
+                }
+                for r in rows
+            ]
 
 
 class _PostgresAnimalDetectionLogRepo(AnimalDetectionLogRepo):

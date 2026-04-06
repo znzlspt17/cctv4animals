@@ -99,6 +99,52 @@ class AlertResponse(BaseModel):
     message: str
     is_active: bool
 
+
+# ── Camera Schemas ──
+
+
+class CameraConfigRequest(BaseModel):
+    """런타임에 카메라를 동적으로 추가할 때 사용하는 요청 바디."""
+
+    camera_id: str
+    video_source: str
+    label: str = ""
+    line_start_x: int = 0
+    line_start_y: int = 360
+    line_end_x: int = 1280
+    line_end_y: int = 360
+    frame_skip: int = 10
+    confidence_threshold: float = 0.5
+    roi_x: int = 0
+    roi_y: int = 0
+    roi_w: int = 0
+    roi_h: int = 0
+    snapshot_dir: str = "snapshots"
+
+
+class CameraStatusResponse(BaseModel):
+    """카메라 상태 응답."""
+
+    camera_id: str
+    label: str
+    video_source: str
+    current_count: int
+    in_count: int
+    out_count: int
+    running: bool
+    paused: bool
+    error: str | None = None
+
+
+class CameraAggregateResponse(BaseModel):
+    """전체 카메라 합산 응답."""
+
+    total_current_count: int
+    total_in_count: int
+    total_out_count: int
+    camera_count: int
+
+
     model_config = {"from_attributes": True}
 
 
