@@ -5,7 +5,7 @@ import numpy as np
 from fastapi import APIRouter, Request, UploadFile, File, Query
 from fastapi.responses import JSONResponse
 
-from server.services.common.result_publisher import publish_event
+from server.services.common.result_publisher import publish_animal_detection
 
 router = APIRouter(tags=["animal"])
 logger = logging.getLogger(__name__)
@@ -49,14 +49,11 @@ async def animal_detect(
         except Exception as e:
             logger.warning("animal detection log save failed: %s", e)
 
-        publish_event(
-            event_type="animal_detection",
-            camera_id=camera_id,
-            payload={
-                "class_name": d.class_name,
-                "confidence": round(d.confidence, 4),
-                "bbox": [round(v, 2) for v in d.bbox],
-            },
+        publish_animal_detection(
+            source=camera_id,
+            class_name=d.class_name,
+            confidence=d.confidence,
+            bbox=d.bbox,
         )
 
     return {
