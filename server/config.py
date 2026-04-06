@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     PERSON_CONFIDENCE_THRESHOLD: float = 0.5
     PERSON_SNAPSHOT_DIR: str = "snapshots"
 
+    # Result Publisher — 추론 이벤트 외부 전송
+    RESULT_PUBLISHER_URL: str = "http://0.0.0.0:8000/events"
+    RESULT_PUBLISHER_TIMEOUT: float = 2.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 

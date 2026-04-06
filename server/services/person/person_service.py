@@ -13,6 +13,7 @@ import supervision as sv
 
 from server.config import settings
 from server.services.common.line_tracker import LineCrossTracker
+from server.services.common.result_publisher import publish_event
 from server.services.person.detector import PersonDetector
 
 logger = logging.getLogger(__name__)
@@ -256,6 +257,21 @@ class PersonCounterService:
                         )
                     except Exception as e:
                         logger.error("PersonCounter: DB save failed: %s", e)
+
+                    # 외부 서버 전송
+                    publish_event(
+                        event_type="person_crossing",
+                        camera_id=settings.PERSON_CAMERA_ID,
+                        payload={
+                            "track_id": track_id,
+                            "direction": direction,
+                            "count_change": count_change,
+                            "current_count": self._current_count,
+                            "confidence": round(conf, 4),
+                            "bbox": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                            "snapshot_path": snap_path,
+                        },
+                    )
 
         finally:
             cap.release()

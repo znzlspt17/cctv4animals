@@ -4,6 +4,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from server.config import settings
 from server.schemas import RecognizeResponse, RegisterResponse
+from server.services.common.result_publisher import publish_event
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ async def recognize(request: Request, file: UploadFile = File(...)):
     results = face_svc.search_face(image_bytes, repo)
 
     # 인식 로그 기록 (매칭된 얼굴만)
+    camera_id = request.headers.get("X-Camera-Id", "unknown")
     if settings.ENABLE_RECOGNITION_LOG:
         for r in results:
             if r["person_id"] is not None:
@@ -31,6 +33,18 @@ async def recognize(request: Request, file: UploadFile = File(...)):
                     )
                 except Exception as e:
                     logger.warning("Failed to save recognition log: %s", e)
+
+                publish_event(
+                    event_type="face_recognition",
+                    camera_id=camera_id,
+                    payload={
+                        "person_id": r["person_id"],
+                        "person_name": r.get("person_name"),
+                        "display_name": r.get("display_name"),
+                        "confidence": round(r["confidence"], 4),
+                        "bbox": r.get("bbox", []),
+                    },
+                )
 
     return {"results": results}
 

@@ -5,6 +5,8 @@ import numpy as np
 from fastapi import APIRouter, Request, UploadFile, File, Query
 from fastapi.responses import JSONResponse
 
+from server.services.common.result_publisher import publish_event
+
 router = APIRouter(tags=["plant"])
 logger = logging.getLogger(__name__)
 
@@ -44,8 +46,9 @@ async def plant_detect(
         area=area,
     )
 
-    # 탐지 결과 DB 저장
+    # 탐지 결과 DB 저장 및 외부 전송
     repo = request.app.state.repo
+    camera_id = request.headers.get("X-Camera-Id", "unknown")
     for d in result.detections:
         try:
             repo.plant_detection_log.create(
@@ -66,6 +69,28 @@ async def plant_detect(
             )
         except Exception as e:
             logger.warning("plant detection log save failed: %s", e)
+
+        publish_event(
+            event_type="plant_detection",
+            camera_id=camera_id,
+            payload={
+                "class_name": d.class_name,
+                "disease_code": d.disease_code,
+                "disease_label": d.disease_label,
+                "confidence": round(d.confidence, 4),
+                "bbox": [round(v, 2) for v in d.bbox],
+                "meta": {
+                    "crop_type": result.crop_type,
+                    "crop_name": result.crop_name,
+                    "shooting_type": result.shooting_type,
+                    "shooting_type_name": result.shooting_type_name,
+                    "grow_stage": result.grow_stage,
+                    "grow_stage_name": result.grow_stage_name,
+                    "area": result.area,
+                    "area_name": result.area_name,
+                },
+            },
+        )
 
     return {
         "count": len(result),
