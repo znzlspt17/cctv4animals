@@ -68,7 +68,7 @@ def publish_animal_detection(
         "detected_at": datetime.now(tz=_KST).isoformat(),
     }
     if image_url:
-        body["image_url"] = image_url
+        body["detect_image_url"] = image_url
     _post("/api/detections/animal", body)
 
 
@@ -106,7 +106,7 @@ def publish_plant_detection(
         "detected_at": datetime.now(tz=_KST).isoformat(),
     }
     if image_url:
-        body["image_url"] = image_url
+        body["detect_image_url"] = image_url
     _post("/api/detections/plant", body)
 
 
