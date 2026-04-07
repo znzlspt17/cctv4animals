@@ -246,6 +246,20 @@ with tab3:
             animal_svc = st.session_state.animal_svc
             result = animal_svc.detect(img_bgr, conf_threshold=conf_thr)
 
+            # DB 저장
+            repo = st.session_state.repo
+            if repo:
+                for d in result.detections:
+                    try:
+                        repo.animal_detection_log.create(
+                            class_name=d.class_name,
+                            confidence=d.confidence,
+                            bbox=d.bbox,
+                            source="streamlit",
+                        )
+                    except Exception as e:
+                        st.warning(f"DB 저장 실패: {e}")
+
             if not result.has_animal:
                 st.info("탐지된 동물 없음")
                 st.image(img_rgb, use_container_width=True)

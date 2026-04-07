@@ -46,6 +46,12 @@ def load_animal_service():
     return svc
 
 
+@st.cache_resource
+def load_repo():
+    from server.repositories import get_repository
+    return get_repository()
+
+
 # ──────────────────────────────────────────────────────────────────
 # 세션 상태 초기화
 # ──────────────────────────────────────────────────────────────────
@@ -109,12 +115,13 @@ with st.sidebar:
 # recv()는 WebRTC 내부 스레드에서 실행 → st.session_state 접근 불가.
 # 메인 스레드에서 필요한 값을 미리 캡처해 클로저로 전달한다.
 # ──────────────────────────────────────────────────────────────────
-def _make_processor_factory(dq, svc, conf):
+def _make_processor_factory(dq, svc, conf, repo):
     class _Processor(VideoProcessorBase):
         def __init__(self):
             self._svc  = svc
             self._dq   = dq
             self._conf = conf
+            self._repo = repo
 
         def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
             img_bgr = frame.to_ndarray(format="bgr24")
@@ -135,6 +142,17 @@ def _make_processor_factory(dq, svc, conf):
                         "클래스": d.class_name,
                         "confidence": round(d.confidence, 4),
                     })
+                    # DB 저장
+                    if self._repo:
+                        try:
+                            self._repo.animal_detection_log.create(
+                                class_name=d.class_name,
+                                confidence=d.confidence,
+                                bbox=d.bbox,
+                                source="webcam",
+                            )
+                        except Exception:
+                            pass
 
             img_rgb = np.ascontiguousarray(
                 cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), dtype=np.uint8
@@ -152,6 +170,7 @@ col_video, col_panel = st.columns([3, 1])
 # 메인 스레드에서 값 캡처 (WebRTC 스레드에 안전하게 전달)
 _dq_captured   = st.session_state["det_queue"]
 _svc_captured  = load_animal_service()
+_repo_captured = load_repo()
 _conf_captured = float(st.session_state.get("wc_conf", 0.3))
 
 with col_video:
@@ -159,7 +178,7 @@ with col_video:
         key="animal-detect",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=_make_processor_factory(
-            _dq_captured, _svc_captured, _conf_captured,
+            _dq_captured, _svc_captured, _conf_captured, _repo_captured,
         ),
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True,

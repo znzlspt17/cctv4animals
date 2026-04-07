@@ -44,10 +44,10 @@ async def animal_detect(
                 class_name=d.class_name,
                 confidence=d.confidence,
                 bbox=d.bbox,
-                source="api",
+                source=camera_id,
             )
         except Exception as e:
-            logger.warning("animal detection log save failed: %s", e)
+            logger.error("animal detection log save failed: %s", e, exc_info=True)
 
         publish_animal_detection(
             source=camera_id,
@@ -67,6 +67,27 @@ async def animal_detect(
             for d in result.detections
         ],
     }
+
+
+@router.get("/animal/logs")
+async def animal_logs(
+    request: Request,
+    limit: int = Query(default=100, ge=1, le=1000),
+):
+    """동물 탐지 로그 조회."""
+    repo = request.app.state.repo
+    rows = repo.animal_detection_log.query(limit=limit)
+    return [
+        {
+            "id": r.id,
+            "source": r.source,
+            "class_name": r.class_name,
+            "confidence": round(r.confidence, 4),
+            "bbox": [r.bbox_x1, r.bbox_y1, r.bbox_x2, r.bbox_y2],
+            "detected_at": r.detected_at,
+        }
+        for r in rows
+    ]
 
 
 @router.post("/animal/reset")
