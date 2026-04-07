@@ -40,22 +40,36 @@ async def animal_detect(
 
     # 탐지 결과 DB 저장 및 외부 전송
     camera_id = "cam-center-01"
+    _base_url = str(request.base_url).rstrip("/")
     for d in result.detections:
+        # bbox 영역 크롭 → JPEG 바이트
+        _x1, _y1, _x2, _y2 = (int(v) for v in d.bbox)
+        _crop = frame[max(0, _y1):_y2, max(0, _x1):_x2]
+        _img_bytes: bytes | None = None
+        if _crop.size > 0:
+            _ok, _enc = cv2.imencode(".jpg", _crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if _ok:
+                _img_bytes = _enc.tobytes()
+
         try:
-            repo.animal_detection_log.create(
+            _row = repo.animal_detection_log.create(
                 class_name=d.class_name,
                 confidence=d.confidence,
                 bbox=d.bbox,
                 source=camera_id,
+                image_data=_img_bytes,
             )
+            _img_url = f"{_base_url}/api/animal/logs/{_row.id}/image" if _row and _img_bytes else None
         except Exception as e:
             logger.error("animal detection log save failed: %s", e, exc_info=True)
+            _img_url = None
 
         publish_animal_detection(
             source=camera_id,
             class_name=d.class_name,
             confidence=d.confidence,
             bbox=d.bbox,
+            image_url=_img_url,
         )
 
     return {
