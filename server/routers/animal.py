@@ -1,8 +1,9 @@
 import logging
+from typing import Any
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, Request, UploadFile, File, Query
+from fastapi import APIRouter, Request, UploadFile, File, Query, Body
 from fastapi.responses import JSONResponse
 
 from server.services.common.result_publisher import publish_animal_detection
@@ -88,6 +89,32 @@ async def animal_logs(
         }
         for r in rows
     ]
+
+
+@router.post("/animal/logs/batch")
+async def animal_logs_batch(
+    request: Request,
+    detections: list[dict[str, Any]] = Body(...),
+    source: str = Query(default="video"),
+):
+    """탐지 결과 배치 저장. tab6 동영상 처리 등에서 사용.
+    
+    Body: [{"class_name": str, "confidence": float, "bbox": [x1,y1,x2,y2]}, ...]
+    """
+    repo = request.app.state.repo
+    saved = 0
+    for d in detections:
+        try:
+            repo.animal_detection_log.create(
+                class_name=d["class_name"],
+                confidence=d["confidence"],
+                bbox=d.get("bbox", []),
+                source=source,
+            )
+            saved += 1
+        except Exception as e:
+            logger.error("batch save failed for %s: %s", d, e)
+    return {"saved": saved, "total": len(detections)}
 
 
 @router.post("/animal/reset")

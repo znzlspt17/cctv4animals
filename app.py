@@ -491,6 +491,27 @@ with tab6:
 
                 prog_bar.empty()
 
+                # ── DB 저장 (FastAPI 배치 엔드포인트) ──────────────────────────
+                if det_log:
+                    import requests as _req
+                    _payload = [
+                        {"class_name": d["클래스"], "confidence": d["confidence"], "bbox": []}
+                        for d in det_log
+                    ]
+                    try:
+                        _r = _req.post(
+                            "http://localhost:8000/api/animal/logs/batch",
+                            json=_payload,
+                            params={"source": "video"},
+                            timeout=30,
+                        )
+                        if _r.ok:
+                            st.toast(f"DB 저장 완료: {_r.json().get('saved', 0)}건", icon="✅")
+                        else:
+                            st.warning(f"DB 저장 실패: {_r.text}")
+                    except Exception as _e:
+                        st.warning(f"DB 저장 오류: {_e}")
+
                 # ── 결과 표시 ──────────────────────────
                 st.divider()
                 st.subheader("📊 결과")
