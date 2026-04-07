@@ -288,6 +288,7 @@ class _PostgresAnimalDetectionLogRepo(AnimalDetectionLogRepo):
         confidence: float,
         bbox: list[float],
         source: str = "api",
+        image_data: bytes | None = None,
     ):
         x1, y1, x2, y2 = (bbox + [None, None, None, None])[:4]
         with SessionLocal() as db:
@@ -296,11 +297,16 @@ class _PostgresAnimalDetectionLogRepo(AnimalDetectionLogRepo):
                 class_name=class_name,
                 confidence=confidence,
                 bbox_x1=x1, bbox_y1=y1, bbox_x2=x2, bbox_y2=y2,
+                image_data=image_data,
             )
             db.add(log)
             db.commit()
             db.refresh(log)
             return log
+
+    def get(self, log_id: int):
+        with SessionLocal() as db:
+            return db.query(AnimalDetectionLog).filter(AnimalDetectionLog.id == log_id).first()
 
     def query(self, limit: int = 100) -> list:
         with SessionLocal() as db:
@@ -329,6 +335,7 @@ class _PostgresPlantDetectionLogRepo(PlantDetectionLogRepo):
         grow_stage_name: str | None = None,
         area: int | None = None,
         area_name: str | None = None,
+        image_data: bytes | None = None,
     ):
         x1, y1, x2, y2 = (bbox + [None, None, None, None])[:4]
         with SessionLocal() as db:
@@ -343,11 +350,16 @@ class _PostgresPlantDetectionLogRepo(PlantDetectionLogRepo):
                 shooting_type=shooting_type, shooting_type_name=shooting_type_name,
                 grow_stage=grow_stage, grow_stage_name=grow_stage_name,
                 area=area, area_name=area_name,
+                image_data=image_data,
             )
             db.add(log)
             db.commit()
             db.refresh(log)
             return log
+
+    def get(self, log_id: int):
+        with SessionLocal() as db:
+            return db.query(PlantDetectionLog).filter(PlantDetectionLog.id == log_id).first()
 
     def query(self, limit: int = 100) -> list:
         with SessionLocal() as db:

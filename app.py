@@ -667,11 +667,20 @@ with tab6:
                                     (_bx1, _by1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 0), 2)
                         total_det += 1
                         _det_in_frame += 1
+                        # bbox 영역 크롭 → JPEG base64
+                        import base64 as _b64
+                        _crop = _frame[max(0, _by1):_by2, max(0, _bx1):_bx2]
+                        _img_b64: str | None = None
+                        if _crop.size > 0:
+                            _ok_enc, _enc_buf = cv2.imencode(".jpg", _crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                            if _ok_enc:
+                                _img_b64 = _b64.b64encode(_enc_buf.tobytes()).decode()
                         det_log.append({
                             "프레임": _fi,
                             "클래스": _d.class_name,
                             "confidence": round(_d.confidence, 4),
                             "bbox": [round(v, 2) for v in _d.bbox],
+                            "image_b64": _img_b64,
                         })
 
                     cv2.putText(_vis_bgr, f"F:{_fi}  det:{_det_in_frame}", (10, 28),
@@ -688,30 +697,40 @@ with tab6:
 
                     # ── ① 내부 DB 저장 (/api/animal/logs/batch) ──────────────────
                     _payload = [
-                        {"class_name": d["클래스"], "confidence": d["confidence"], "bbox": d.get("bbox", [])}
+                        {
+                            "class_name": d["클래스"],
+                            "confidence": d["confidence"],
+                            "bbox": d.get("bbox", []),
+                            "image_b64": d.get("image_b64"),
+                        }
                         for d in det_log
                     ]
+                    _saved_ids: list[int | None] = [None] * len(det_log)
                     try:
                         _r = _req.post(
                             "http://localhost:8000/api/animal/logs/batch",
                             json=_payload,
                             params={"source": "video"},
-                            timeout=30,
+                            timeout=60,
                         )
                         if _r.ok:
-                            st.toast(f"DB 저장 완료: {_r.json().get('saved', 0)}건", icon="💾")
+                            _rj = _r.json()
+                            _saved_ids = _rj.get("ids", _saved_ids)
+                            st.toast(f"DB 저장 완료: {_rj.get('saved', 0)}건", icon="💾")
                         else:
                             st.warning(f"DB 저장 실패: {_r.text}")
                     except Exception as _e:
                         st.warning(f"DB 저장 오류: {_e}")
 
-                    # ── ② 외부 서버 전송 (RESULT_PUBLISHER_BASE_URL/api/detections/animal) ──
-                    for _d in det_log:
+                    # ── ② 외부 서버 전송 (image_url 포함) ──────────────────────
+                    for _d, _sid in zip(det_log, _saved_ids):
+                        _img_url = f"http://localhost:8000/api/animal/logs/{_sid}/image" if _sid else None
                         _pub(
                             source="video",
                             class_name=_d["클래스"],
                             confidence=_d["confidence"],
                             bbox=_d.get("bbox", []),
+                            image_url=_img_url,
                         )
                     st.toast(f"외부 서버 전송 완료: {len(det_log)}건", icon="✅")
 

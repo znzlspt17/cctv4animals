@@ -3,8 +3,8 @@ import logging
 import cv2
 import numpy as np
 from fastapi import APIRouter, Request, UploadFile, File, Query
-from fastapi.responses import JSONResponse
-
+from fastapi.responses import JSONResponse, Response
+from server.config import settings
 from server.services.common.result_publisher import publish_plant_detection
 
 router = APIRouter(tags=["plant"])
@@ -49,9 +49,19 @@ async def plant_detect(
     # 탐지 결과 DB 저장 및 외부 전송
     repo = request.app.state.repo
     camera_id = request.headers.get("X-Camera-Id", "unknown")
+    _base_url = str(request.base_url).rstrip("/")
     for d in result.detections:
+        # bbox 영역 크롭 → JPEG 바이트
+        _x1, _y1, _x2, _y2 = (int(v) for v in d.bbox)
+        _crop = frame[max(0, _y1):_y2, max(0, _x1):_x2]
+        _img_bytes: bytes | None = None
+        if _crop.size > 0:
+            _ok, _enc = cv2.imencode(".jpg", _crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if _ok:
+                _img_bytes = _enc.tobytes()
+
         try:
-            repo.plant_detection_log.create(
+            _row = repo.plant_detection_log.create(
                 class_name=d.class_name,
                 confidence=d.confidence,
                 bbox=d.bbox,
@@ -66,9 +76,12 @@ async def plant_detect(
                 grow_stage_name=result.grow_stage_name,
                 area=result.area,
                 area_name=result.area_name,
+                image_data=_img_bytes,
             )
+            _img_url = f"{_base_url}/api/plant/logs/{_row.id}/image" if _row and _img_bytes else None
         except Exception as e:
             logger.warning("plant detection log save failed: %s", e)
+            _img_url = None
 
         publish_plant_detection(
             source=camera_id,
@@ -82,6 +95,7 @@ async def plant_detect(
             shooting_type=result.shooting_type,
             grow_stage=result.grow_stage,
             area=result.area,
+            image_url=_img_url,
         )
 
     return {
@@ -107,3 +121,17 @@ async def plant_detect(
             for d in result.detections
         ],
     }
+
+
+@router.get("/plant/logs/{log_id}/image")
+async def plant_log_image(log_id: int, request: Request):
+    """저장된 식물 탐지 이미지 다운로드."""
+    repo = request.app.state.repo
+    row = repo.plant_detection_log.get(log_id)
+    if row is None or not row.image_data:
+        return JSONResponse(status_code=404, content={"detail": "이미지 없음"})
+    return Response(
+        content=row.image_data,
+        media_type="image/jpeg",
+        headers={"Content-Disposition": f"attachment; filename=plant_{log_id}.jpg"},
+    )

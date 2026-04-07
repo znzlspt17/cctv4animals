@@ -51,3 +51,7 @@ CREATE TABLE IF NOT EXISTS plant_detection_logs (
 );
 CREATE INDEX IF NOT EXISTS ix_plant_logs_class_at ON plant_detection_logs (class_name, detected_at);
 CREATE INDEX IF NOT EXISTS ix_plant_logs_detected_at ON plant_detection_logs (detected_at);
+
+-- 6. 탐지 이미지 바이트스트림 컬럼 추가 (기존 DB 마이그레이션용)
+ALTER TABLE animal_detection_logs ADD COLUMN IF NOT EXISTS image_data BYTEA;
+ALTER TABLE plant_detection_logs  ADD COLUMN IF NOT EXISTS image_data BYTEA;

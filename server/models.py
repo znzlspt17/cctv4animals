@@ -116,6 +116,7 @@ class AnimalDetectionLog(Base):
     bbox_y1 = Column(Float, nullable=True)
     bbox_x2 = Column(Float, nullable=True)
     bbox_y2 = Column(Float, nullable=True)
+    image_data = Column(LargeBinary, nullable=True)
     detected_at = Column(DateTime, default=func.now(), index=True)
 
     __table_args__ = (
@@ -147,6 +148,7 @@ class PlantDetectionLog(Base):
     grow_stage_name = Column(String(50), nullable=True)
     area = Column(Integer, nullable=True)
     area_name = Column(String(50), nullable=True)
+    image_data = Column(LargeBinary, nullable=True)
     detected_at = Column(DateTime, default=func.now(), index=True)
 
     __table_args__ = (

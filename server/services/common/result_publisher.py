@@ -51,6 +51,7 @@ def publish_animal_detection(
     class_name: str,
     confidence: float,
     bbox: list[float],
+    image_url: str | None = None,
 ) -> None:
     """동물 탐지 이벤트를 POST /api/detections/animal 으로 전송한다."""
     x1, y1, x2, y2 = (bbox + [0, 0, 0, 0])[:4]
@@ -64,6 +65,8 @@ def publish_animal_detection(
         "bbox_y2": round(y2, 2),
         "detected_at": datetime.now(tz=timezone.utc).isoformat(),
     }
+    if image_url:
+        body["image_url"] = image_url
     _post("/api/detections/animal", body)
 
 
@@ -79,6 +82,7 @@ def publish_plant_detection(
     shooting_type: int | None,
     grow_stage: int | None,
     area: int | None,
+    image_url: str | None = None,
 ) -> None:
     """식물 탐지 이벤트를 POST /api/detections/plant 으로 전송한다."""
     x1, y1, x2, y2 = (bbox + [0, 0, 0, 0])[:4]
@@ -99,6 +103,8 @@ def publish_plant_detection(
         "area": area,
         "detected_at": datetime.now(tz=timezone.utc).isoformat(),
     }
+    if image_url:
+        body["image_url"] = image_url
     _post("/api/detections/plant", body)
 
 

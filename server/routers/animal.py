@@ -1,10 +1,11 @@
+import base64
 import logging
 from typing import Any
 
 import cv2
 import numpy as np
 from fastapi import APIRouter, Request, UploadFile, File, Query, Body
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from server.services.common.result_publisher import publish_animal_detection
 
@@ -38,7 +39,7 @@ async def animal_detect(
     result = svc.detect(frame, conf_threshold=conf)
 
     # 탐지 결과 DB 저장 및 외부 전송
-    camera_id = request.headers.get("X-Camera-Id", "unknown")
+    camera_id = "cam-center-01"
     for d in result.detections:
         try:
             repo.animal_detection_log.create(
@@ -95,26 +96,49 @@ async def animal_logs(
 async def animal_logs_batch(
     request: Request,
     detections: list[dict[str, Any]] = Body(...),
-    source: str = Query(default="video"),
+    source: str = Query(default="cam-center-01"),
 ):
     """탐지 결과 배치 저장. tab6 동영상 처리 등에서 사용.
-    
-    Body: [{"class_name": str, "confidence": float, "bbox": [x1,y1,x2,y2]}, ...]
+
+    Body: [{"class_name": str, "confidence": float, "bbox": [x1,y1,x2,y2],
+            "image_b64": str(optional, base64-encoded JPEG)}, ...]
+    반환: {"saved": int, "total": int, "ids": [int|null, ...]}
     """
     repo = request.app.state.repo
     saved = 0
+    ids: list[int | None] = []
     for d in detections:
         try:
-            repo.animal_detection_log.create(
+            _img_data: bytes | None = None
+            if d.get("image_b64"):
+                _img_data = base64.b64decode(d["image_b64"])
+            row = repo.animal_detection_log.create(
                 class_name=d["class_name"],
                 confidence=d["confidence"],
                 bbox=d.get("bbox", []),
                 source=source,
+                image_data=_img_data,
             )
+            ids.append(row.id)
             saved += 1
         except Exception as e:
             logger.error("batch save failed for %s: %s", d, e)
-    return {"saved": saved, "total": len(detections)}
+            ids.append(None)
+    return {"saved": saved, "total": len(detections), "ids": ids}
+
+
+@router.get("/animal/logs/{log_id}/image")
+async def animal_log_image(log_id: int, request: Request):
+    """저장된 동물 탐지 이미지 다운로드."""
+    repo = request.app.state.repo
+    row = repo.animal_detection_log.get(log_id)
+    if row is None or not row.image_data:
+        return JSONResponse(status_code=404, content={"detail": "이미지 없음"})
+    return Response(
+        content=row.image_data,
+        media_type="image/jpeg",
+        headers={"Content-Disposition": f"attachment; filename=animal_{log_id}.jpg"},
+    )
 
 
 @router.post("/animal/reset")

@@ -109,7 +109,11 @@ class AnimalDetectionLogRepo(ABC):
         confidence: float,
         bbox: list[float],
         source: str = "api",
+        image_data: bytes | None = None,
     ): ...
+
+    @abstractmethod
+    def get(self, log_id: int): ...
 
     @abstractmethod
     def query(self, limit: int = 100) -> list: ...
@@ -133,7 +137,11 @@ class PlantDetectionLogRepo(ABC):
         grow_stage_name: str | None = None,
         area: int | None = None,
         area_name: str | None = None,
+        image_data: bytes | None = None,
     ): ...
+
+    @abstractmethod
+    def get(self, log_id: int): ...
 
     @abstractmethod
     def query(self, limit: int = 100) -> list: ...
