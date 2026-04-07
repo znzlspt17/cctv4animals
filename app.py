@@ -456,6 +456,8 @@ if "canvas_w" not in st.session_state:
     st.session_state.canvas_w = 640
 if "canvas_h" not in st.session_state:
     st.session_state.canvas_h = 360
+if "canvas_frame_key" not in st.session_state:
+    st.session_state.canvas_frame_key = None
 
 with tab6:
     st.header("🔴 동물 탐지 테스트")
@@ -497,43 +499,50 @@ with tab6:
 
         # ── 업로드 즉시 첫 프레임 추출 → 캔버스 배경 캐시 ──────────────────────────
         from PIL import Image as _PILImage_pre
-        if input_mode == "🎬 동영상 파일" and video_upload:
-            import tempfile as _pre_tmp, os as _pre_os
-            video_upload.seek(0)
-            with _pre_tmp.NamedTemporaryFile(delete=False, suffix=".mp4") as _pf:
-                _pf.write(video_upload.read())
-                _pf_path = _pf.name
-            _pre_cap = cv2.VideoCapture(_pf_path)
-            _pre_ret, _pre_frame = _pre_cap.read()
-            _pre_cap.release()
-            _pre_os.unlink(_pf_path)
-            if _pre_ret and _pre_frame is not None:
-                _oh, _ow = _pre_frame.shape[:2]
+        import io as _io_pre
+
+        _upload_key = getattr(video_upload, "name", None) or (
+            sorted(imgs_upload, key=lambda f: f.name)[0].name if imgs_upload else None
+        )
+        # 파일명이 바뀔 때만 재추출
+        if _upload_key and _upload_key != st.session_state.canvas_frame_key:
+            _pre_frame_rgb = None
+            if input_mode == "🎬 동영상 파일" and video_upload:
+                video_upload.seek(0)
+                _raw_bytes = video_upload.read()
+                _pre_frame_rgb = None
+                import tempfile as _ptmp2, os as _pos2
+                _tf2 = _ptmp2.NamedTemporaryFile(delete=False, suffix=".mp4")
+                _tf2.write(_raw_bytes)
+                _tf2.close()  # Windows에서 반드시 닫은 뒤 cv2로 열어야 함
+                _cap2 = cv2.VideoCapture(_tf2.name)
+                _ret2, _bgr = _cap2.read()
+                _cap2.release()
+                try:
+                    _pos2.unlink(_tf2.name)
+                except Exception:
+                    pass
+                if _ret2 and _bgr is not None:
+                    _pre_frame_rgb = bgr_to_rgb(_bgr)
+            elif input_mode == "🖼️ 이미지 시퀀스" and imgs_upload:
+                _first_f = sorted(imgs_upload, key=lambda f: f.name)[0]
+                _first_f.seek(0)
+                _arr = np.frombuffer(_first_f.read(), dtype=np.uint8)
+                _bgr = cv2.imdecode(_arr, cv2.IMREAD_COLOR)
+                if _bgr is not None:
+                    _pre_frame_rgb = bgr_to_rgb(_bgr)
+
+            if _pre_frame_rgb is not None:
+                _oh, _ow = _pre_frame_rgb.shape[:2]
                 _cw = min(800, _ow)
                 _ch = int(_oh * _cw / _ow)
-                st.session_state.canvas_bg_pil = _PILImage_pre.fromarray(
-                    cv2.resize(bgr_to_rgb(_pre_frame), (_cw, _ch))
-                )
+                _resized = cv2.resize(_pre_frame_rgb, (_cw, _ch))
+                st.session_state.canvas_bg_pil = _PILImage_pre.fromarray(_resized)
                 st.session_state.canvas_orig_w = _ow
                 st.session_state.canvas_orig_h = _oh
                 st.session_state.canvas_w = _cw
                 st.session_state.canvas_h = _ch
-        elif input_mode == "🖼️ 이미지 시퀀스" and imgs_upload:
-            _first_f = sorted(imgs_upload, key=lambda f: f.name)[0]
-            _first_f.seek(0)
-            _pre_arr = np.frombuffer(_first_f.read(), dtype=np.uint8)
-            _pre_img = cv2.imdecode(_pre_arr, cv2.IMREAD_COLOR)
-            if _pre_img is not None:
-                _oh, _ow = _pre_img.shape[:2]
-                _cw = min(800, _ow)
-                _ch = int(_oh * _cw / _ow)
-                st.session_state.canvas_bg_pil = _PILImage_pre.fromarray(
-                    cv2.resize(bgr_to_rgb(_pre_img), (_cw, _ch))
-                )
-                st.session_state.canvas_orig_w = _ow
-                st.session_state.canvas_orig_h = _oh
-                st.session_state.canvas_w = _cw
-                st.session_state.canvas_h = _ch
+                st.session_state.canvas_frame_key = _upload_key
 
         # ── 폴리곤 바운더리 설정 (캔버스) ──────────────────────────
         with st.expander("🔲 탐지 영역 — 캔버스에서 직접 그리기", expanded=st.session_state.use_polygon):
@@ -560,6 +569,8 @@ with tab6:
 
             _draw_col, _info_col = st.columns([3, 1])
             with _draw_col:
+                if _canvas_bg_pil is None:
+                    st.info("동영상/이미지를 업로드하면 첫 프레임이 배경으로 표시됩니다.")
                 _canvas_result = st_canvas(
                     fill_color="rgba(0, 180, 255, 0.20)",
                     stroke_color="#00B4FF",
