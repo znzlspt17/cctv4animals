@@ -229,57 +229,51 @@ with tab2:
 # ══════════════════════════════════════════════
 with tab3:
     st.header("동물 탐지")
-    if not st.session_state.animal_svc:
-        st.warning("사이드바에서 서비스를 먼저 연결하세요.")
-    else:
-        col1, col2 = st.columns(2)
-        with col1:
-            upload = st.file_uploader("이미지 업로드", type=["jpg", "jpeg", "png"], key="animal_img")
-        with col2:
-            conf_thr = st.slider("Confidence 임계값", 0.1, 1.0, 0.4, 0.05)
+    col1, col2 = st.columns(2)
+    with col1:
+        upload = st.file_uploader("이미지 업로드", type=["jpg", "jpeg", "png"], key="animal_img")
+    with col2:
+        conf_thr = st.slider("Confidence 임계값", 0.1, 1.0, 0.4, 0.05)
 
-        if upload and st.button("🐾 탐지 실행", use_container_width=True):
-            upload.seek(0)
-            img_bgr = bytes_to_bgr(upload)
-            img_rgb = bgr_to_rgb(img_bgr)
+    if upload and st.button("🐾 탐지 실행", use_container_width=True):
+        import requests as _requests
+        upload.seek(0)
+        img_bytes = upload.read()
+        img_bgr = bytes_to_bgr(io.BytesIO(img_bytes))
+        img_rgb = bgr_to_rgb(img_bgr)
 
-            animal_svc = st.session_state.animal_svc
-            result = animal_svc.detect(img_bgr, conf_threshold=conf_thr)
+        # FastAPI를 통해 탐지 + DB 저장
+        try:
+            resp = _requests.post(
+                "http://localhost:8000/api/animal/detect",
+                files={"file": (upload.name, img_bytes, "image/jpeg")},
+                params={"conf": conf_thr},
+                timeout=30,
+            )
+            api_result = resp.json() if resp.ok else {}
+        except Exception as e:
+            st.warning(f"FastAPI 호출 실패: {e}")
+            api_result = {}
 
-            # DB 저장
-            repo = st.session_state.repo
-            if repo is None:
-                from server.repositories import get_repository
-                repo = get_repository()
-                st.session_state.repo = repo
-            for d in result.detections:
-                try:
-                    repo.animal_detection_log.create(
-                        class_name=d.class_name,
-                        confidence=d.confidence,
-                        bbox=d.bbox,
-                        source="streamlit",
-                    )
-                except Exception as e:
-                    st.warning(f"DB 저장 실패: {e}")
+        detections = api_result.get("detections", [])
 
-            if not result.has_animal:
-                st.info("탐지된 동물 없음")
-                st.image(img_rgb, use_container_width=True)
-            else:
-                for det in result.detections:
-                    x1, y1, x2, y2 = det.bbox
-                    label = f"{det.class_name} {det.confidence:.2f}"
-                    img_rgb = draw_xyxy(img_rgb, x1, y1, x2, y2, label)
+        if not detections:
+            st.info("탐지된 동물 없음")
+            st.image(img_rgb, use_container_width=True)
+        else:
+            for det in detections:
+                x1, y1, x2, y2 = det["bbox"]
+                label = f"{det['class_name']} {det['confidence']:.2f}"
+                img_rgb = draw_xyxy(img_rgb, x1, y1, x2, y2, label)
 
-                st.image(img_rgb, caption=f"탐지 {len(result.detections)}마리", use_container_width=True)
-                st.dataframe(
-                    [
-                        {"클래스": d.class_name, "confidence": round(d.confidence, 4),
-                         "bbox": [round(v, 1) for v in d.bbox]}
-                        for d in result.detections
-                    ]
-                )
+            st.image(img_rgb, caption=f"탐지 {len(detections)}마리", use_container_width=True)
+            st.dataframe(
+                [
+                    {"클래스": d["class_name"], "confidence": round(d["confidence"], 4),
+                     "bbox": [round(v, 1) for v in d["bbox"]]}
+                    for d in detections
+                ]
+            )
 
 
 # ══════════════════════════════════════════════
