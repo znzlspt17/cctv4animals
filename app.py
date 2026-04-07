@@ -28,6 +28,10 @@ def _compat_image_to_url(image, layout_config_or_width, clamp=False, channels="R
 
 _st_img_mod.image_to_url = _compat_image_to_url
 
+from server.config import settings as _settings
+# FastAPI 호출에 사용할 기본 URL — .env의 FASTAPI_PUBLIC_HOST 우선, 없으면 localhost
+_API_BASE = _settings.FASTAPI_PUBLIC_HOST.rstrip("/") if _settings.FASTAPI_PUBLIC_HOST else "http://localhost:8000"
+
 st.set_page_config(page_title="DeepFace Live 테스트", layout="wide")
 
 # ──────────────────────────────────────────────
@@ -290,7 +294,7 @@ with tab3:
         # FastAPI를 통해 탐지 + DB 저장
         try:
             resp = _requests.post(
-                "http://localhost:8000/api/animal/detect",
+                f"{_API_BASE}/api/animal/detect",
                 files={"file": (upload.name, img_bytes, "image/jpeg")},
                 params={"conf": conf_thr},
                 timeout=30,
@@ -342,7 +346,7 @@ with tab4:
         # FastAPI를 통해 탐지 + DB 저장
         try:
             resp = _requests.post(
-                "http://localhost:8000/api/plant/detect",
+                f"{_API_BASE}/api/plant/detect",
                 files={"file": (upload.name, img_bytes, "image/jpeg")},
                 params={"conf": conf_thr},
                 timeout=30,
@@ -708,7 +712,7 @@ with tab6:
                     _saved_ids: list[int | None] = [None] * len(det_log)
                     try:
                         _r = _req.post(
-                            "http://localhost:8000/api/animal/logs/batch",
+                            f"{_API_BASE}/api/animal/logs/batch",
                             json=_payload,
                             params={"source": "video"},
                             timeout=60,
@@ -724,7 +728,7 @@ with tab6:
 
                     # ── ② 외부 서버 전송 (image_url 포함) ──────────────────────
                     for _d, _sid in zip(det_log, _saved_ids):
-                        _img_url = f"http://localhost:8000/api/animal/logs/{_sid}/image" if _sid else None
+                        _img_url = f"{_API_BASE}/api/animal/logs/{_sid}/image" if _sid else None
                         _pub(
                             source="video",
                             class_name=_d["클래스"],

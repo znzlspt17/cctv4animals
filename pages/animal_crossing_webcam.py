@@ -17,7 +17,9 @@ st.set_page_config(page_title="동물 실시간 탐지 (웹캠)", layout="wide")
 st.title("🐾 동물 실시간 탐지 — 웹캠")
 st.caption("웹캠 영상에서 동물을 실시간으로 탐지합니다.")
 
-_API_BASE = "http://localhost:8000"
+from server.config import settings as _settings
+# FastAPI 호출에 사용할 기본 URL — .env의 FASTAPI_PUBLIC_HOST 우선, 없으면 localhost
+_API_BASE = _settings.FASTAPI_PUBLIC_HOST.rstrip("/") if _settings.FASTAPI_PUBLIC_HOST else "http://localhost:8000"
 
 
 def _api_pause() -> bool:
