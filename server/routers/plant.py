@@ -48,7 +48,7 @@ async def plant_detect(
 
     # 탐지 결과 DB 저장 및 외부 전송
     repo = request.app.state.repo
-    camera_id = request.headers.get("X-Camera-Id", "unknown")
+    camera_id = "cam-center-01"
     _base_url = (settings.FASTAPI_PUBLIC_HOST.rstrip("/")
                  if settings.FASTAPI_PUBLIC_HOST
                  else str(request.base_url).rstrip("/"))
