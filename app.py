@@ -671,26 +671,17 @@ with tab6:
 
                 prog_bar.empty()
 
-                # ── DB 저장 (FastAPI 배치 엔드포인트) ──────────────────────────
+                # ── 외부 서버 전송 (result_publisher → RESULT_PUBLISHER_BASE_URL/api/detections/animal) ──
                 if det_log:
-                    import requests as _req
-                    _payload = [
-                        {"class_name": d["클래스"], "confidence": d["confidence"], "bbox": d.get("bbox", [])}
-                        for d in det_log
-                    ]
-                    try:
-                        _r = _req.post(
-                            "http://localhost:8000/api/animal/logs/batch",
-                            json=_payload,
-                            params={"source": "video"},
-                            timeout=30,
+                    from server.services.common.result_publisher import publish_animal_detection as _pub
+                    for _d in det_log:
+                        _pub(
+                            source="video",
+                            class_name=_d["클래스"],
+                            confidence=_d["confidence"],
+                            bbox=_d.get("bbox", []),
                         )
-                        if _r.ok:
-                            st.toast(f"DB 저장 완료: {_r.json().get('saved', 0)}건", icon="✅")
-                        else:
-                            st.warning(f"DB 저장 실패: {_r.text}")
-                    except Exception as _e:
-                        st.warning(f"DB 저장 오류: {_e}")
+                    st.toast(f"외부 서버 전송 완료: {len(det_log)}건", icon="✅")
 
                 # ── 결과 표시 ──────────────────────────
                 st.divider()
