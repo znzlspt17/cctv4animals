@@ -543,8 +543,8 @@ with tab6:
             st.session_state.canvas_w = _cw
             st.session_state.canvas_h = _ch
 
-        # ── 폴리곤 바운더리 설정 (캔버스) ──────────────────────────
-        with st.expander("🔲 탐지 영역 — 캔버스에서 직접 그리기", expanded=st.session_state.use_polygon):
+        # ── 폴리곤 바운더리 설정 (좌표 입력 + 실시간 프리뷰) ──────────────────────────
+        with st.expander("🔲 탐지 영역 — 폴리곤 설정", expanded=st.session_state.use_polygon):
             use_poly = st.checkbox(
                 "폴리곤 필터 활성화 — 바운딩 박스 중심이 폴리곤 내부일 때만 저장/표시",
                 value=st.session_state.use_polygon,
@@ -552,70 +552,42 @@ with tab6:
             )
             st.session_state.use_polygon = use_poly
 
-            st.caption(
-                "아래 캔버스에서 **클릭**으로 꼭지점을 추가하고, **더블클릭**으로 폴리곤을 완성하세요. "
-                "동영상/이미지를 먼저 업로드하면 첫 프레임이 배경으로 표시됩니다."
-            )
-
-            from streamlit_drawable_canvas import st_canvas
-
-            # 세션 캐시에서 캔버스 배경 읽기 (업로드 직후 이미 추출됨)
-            _canvas_bg_pil = st.session_state.canvas_bg_pil
+            # ── 좌표 입력 (6꼭지점, 3열 레이아웃) ──
+            _bg_frame = st.session_state.canvas_bg_pil  # PIL or None
             _orig_w = st.session_state.canvas_orig_w
             _orig_h = st.session_state.canvas_orig_h
-            _canvas_w = st.session_state.canvas_w
-            _canvas_h = st.session_state.canvas_h
 
-            _draw_col, _info_col = st.columns([3, 1])
-            with _draw_col:
-                if _canvas_bg_pil is None:
-                    st.info("동영상/이미지를 업로드하면 첫 프레임이 배경으로 표시됩니다.")
-                _canvas_result = st_canvas(
-                    fill_color="rgba(0, 180, 255, 0.20)",
-                    stroke_color="#00B4FF",
-                    stroke_width=2,
-                    background_image=_canvas_bg_pil,
-                    drawing_mode="polygon",
-                    height=_canvas_h,
-                    width=_canvas_w,
-                    key="polygon_canvas",
-                    update_streamlit=True,
-                    display_toolbar=True,
-                )
-            with _info_col:
-                st.markdown("**사용법**")
-                st.markdown(
-                    "1. 클릭으로 꼭지점 추가  \n"
-                    "2. 더블클릭으로 폴리곤 완성  \n"
-                    "3. 🗑️ 툴바 버튼으로 초기화"
-                )
-                if st.session_state.poly_pts:
-                    st.markdown(f"**현재 꼭지점:** {len(st.session_state.poly_pts)}개")
-                    for _pi2, (_ppx, _ppy) in enumerate(st.session_state.poly_pts):
-                        st.text(f"P{_pi2 + 1}: ({_ppx}, {_ppy})")
+            if _bg_frame is not None:
+                st.caption(f"동영상 첫 프레임 기준 — 프레임 크기: {_orig_w}×{_orig_h}px")
+            else:
+                st.caption("동영상/이미지를 업로드하면 첫 프레임 프리뷰가 표시됩니다.")
 
-            # 캔버스에서 폴리곤 좌표 추출 → session_state 업데이트
-            if _canvas_result.json_data and _canvas_result.json_data.get("objects"):
-                _last_obj = _canvas_result.json_data["objects"][-1]
-                if _last_obj.get("type") == "path":
-                    _obj_left = float(_last_obj.get("left", 0))
-                    _obj_top = float(_last_obj.get("top", 0))
-                    _raw_path = _last_obj.get("path", [])
-                    _canvas_pts: list[tuple[float, float]] = []
-                    for _cmd in _raw_path:
-                        if isinstance(_cmd, list) and _cmd[0] in ("M", "L") and len(_cmd) >= 3:
-                            _canvas_pts.append((float(_cmd[1]) + _obj_left,
-                                                float(_cmd[2]) + _obj_top))
-                    # 닫기 명령으로 추가된 중복 첫 점 제거
-                    if len(_canvas_pts) > 1 and _canvas_pts[-1] == _canvas_pts[0]:
-                        _canvas_pts = _canvas_pts[:-1]
-                    if len(_canvas_pts) >= 3:
-                        # 캔버스 표시 크기 → 실제 프레임 크기로 스케일 변환
-                        _sx = _orig_w / _canvas_w
-                        _sy = _orig_h / _canvas_h
-                        st.session_state.poly_pts = [
-                            (int(x * _sx), int(y * _sy)) for x, y in _canvas_pts
-                        ]
+            _new_pts: list[tuple[int, int]] = []
+            _pcols = st.columns(3)
+            for _pi in range(6):
+                _cur_x, _cur_y = st.session_state.poly_pts[_pi]
+                _max_x = _orig_w if _orig_w > 0 else 9999
+                _max_y = _orig_h if _orig_h > 0 else 9999
+                with _pcols[_pi % 3]:
+                    st.markdown(f"**P{_pi+1}**")
+                    _px = st.number_input(f"X", min_value=0, max_value=_max_x, value=min(_cur_x, _max_x), step=10, key=f"px_{_pi}", label_visibility="collapsed")
+                    _py = st.number_input(f"Y", min_value=0, max_value=_max_y, value=min(_cur_y, _max_y), step=10, key=f"py_{_pi}", label_visibility="collapsed")
+                _new_pts.append((int(_px), int(_py)))
+            st.session_state.poly_pts = _new_pts
+
+            # ── 실시간 프리뷰 (첫 프레임 + 폴리곤 오버레이) ──
+            if _bg_frame is not None:
+                import numpy as _np_prev
+                _prev_arr = _np_prev.array(_bg_frame)  # RGB numpy
+                # 폴리곤 좌표를 표시 해상도로 스케일
+                _cw = _bg_frame.width
+                _ch = _bg_frame.height
+                _sx = _cw / _orig_w
+                _sy = _ch / _orig_h
+                _scaled_pts = [(int(x * _sx), int(y * _sy)) for x, y in _new_pts]
+                _prev_with_poly = draw_polygon_on_frame(_prev_arr, _scaled_pts)
+                st.image(_prev_with_poly, caption="폴리곤 프리뷰 (좌표 변경 시 자동 갱신)", use_container_width=True)
+
 
         # ── 실행 버튼 ──────────────────────────
         run_crossing = st.button("▶️ 테스트 실행", use_container_width=True, key="run_crossing")
