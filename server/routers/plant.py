@@ -49,9 +49,8 @@ async def plant_detect(
     # 탐지 결과 DB 저장 및 외부 전송
     repo = request.app.state.repo
     camera_id = "cam-center-01"
-    _base_url = (settings.FASTAPI_PUBLIC_HOST.rstrip("/")
-                 if settings.FASTAPI_PUBLIC_HOST
-                 else str(request.base_url).rstrip("/"))
+    # FASTAPI_PUBLIC_HOST 미설정 시 이미지 URL 생성 안 함 (localhost를 외부 서버에 보내지 않기 위해)
+    _base_url = settings.FASTAPI_PUBLIC_HOST.rstrip("/") if settings.FASTAPI_PUBLIC_HOST else None
     for d in result.detections:
         # bbox 영역 크롭 → JPEG 바이트
         _x1, _y1, _x2, _y2 = (int(v) for v in d.bbox)
@@ -80,7 +79,7 @@ async def plant_detect(
                 area_name=result.area_name,
                 image_data=_img_bytes,
             )
-            _img_url = f"{_base_url}/api/plant/logs/{_row.id}/image" if _row and _img_bytes else None
+            _img_url = f"{_base_url}/api/plant/logs/{_row.id}/image" if _row and _img_bytes and _base_url else None
         except Exception as e:
             logger.warning("plant detection log save failed: %s", e)
             _img_url = None
