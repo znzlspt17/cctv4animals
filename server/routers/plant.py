@@ -85,6 +85,10 @@ async def plant_detect(
             logger.warning("plant detection log save failed: %s", e)
             _img_url = None
 
+        # 정상(normal) 판정이면서 확률 50% 미만이면 외부 전송 생략
+        if d.class_name == "normal" and d.confidence < 0.5:
+            continue
+
         publish_plant_detection(
             source=camera_id,
             class_name=d.class_name,

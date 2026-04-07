@@ -1,6 +1,6 @@
 # DeepFace Live
 
-CCTV 기반 실시간 탐지 시스템 — 얼굴 인식, 동물 탐지, 식물(병해) 탐지를 통합 제공합니다.
+CCTV 기반 실시간 AI 엣지 서버 — 얼굴 인식, 동물·식물 탐지, 인원 카운팅을 통합 제공합니다.
 
 ---
 
@@ -10,7 +10,7 @@ CCTV 기반 실시간 탐지 시스템 — 얼굴 인식, 동물 탐지, 식물(
 |---|---|
 | **FastAPI** (`server/`) | 추론·DB·외부 전송 REST API 서버 (포트 8000) |
 | **Streamlit** (`app.py`) | 관리자 웹 UI (포트 8501) |
-| **PostgreSQL** | 탐지 로그·인물·얼굴 임베딩 저장 |
+| **PostgreSQL** | 탐지 로그·인물·얼굴 임베딩 저장 (pgvector 포함) |
 
 ---
 
@@ -21,12 +21,14 @@ CCTV 기반 실시간 탐지 시스템 — 얼굴 인식, 동물 탐지, 식물(
 uv sync
 
 # .env 설정 (아래 환경변수 섹션 참조)
-cp .env.example .env   # 없으면 직접 생성
+
+# PostgreSQL + pgvector 초기화
+psql -h <HOST> -p 5555 -U postgres -d cctv -f init.sql
 
 # FastAPI 서버
 python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 
-# Streamlit UI
+# Streamlit UI (선택)
 python -m streamlit run app.py --server.port 8501
 ```
 
@@ -43,9 +45,19 @@ python -m streamlit run app.py --server.port 8501
 | `FACE_DB_PATH` | `face_db` | 얼굴 이미지 저장 디렉터리 |
 | `DEEPFACE_MODEL` | `ArcFace` | 얼굴 임베딩 모델 |
 | `RECOGNITION_THRESHOLD` | `0.40` | 얼굴 인식 cosine 거리 임계값 |
-| `PERSON_VIDEO_SOURCE` | `0` | 인원 카운팅 카메라 소스 |
-| `CAMERAS_JSON` | `""` | 멀티카메라 JSON 배열 (비어 있으면 `PERSON_*` 단일 설정 사용) |
+| `PERSON_VIDEO_SOURCE` | `0` | 인원 카운팅 카메라 소스 (단일 카메라 모드) |
+| `PERSON_CAMERA_ID` | `cam_01` | 단일 카메라 모드의 카메라 ID |
+| `CAMERAS_JSON` | `""` | 멀티카메라 JSON 배열 (설정 시 `PERSON_*` 단일 설정보다 우선 적용) |
 | `ENABLE_RECOGNITION_LOG` | `true` | 얼굴 인식 로그 DB 저장 여부 |
+
+### 멀티카메라 설정 예시
+
+```env
+CAMERAS_JSON=[
+  {"camera_id":"cam_01","video_source":"0","label":"정문"},
+  {"camera_id":"cam_02","video_source":"rtsp://192.168.1.10/stream","label":"후문","line_start_y":540,"line_end_y":540}
+]
+```
 
 ---
 
@@ -60,10 +72,18 @@ python -m streamlit run app.py --server.port 8501
 ### 인물 관리
 | 메서드 | 경로 | 설명 |
 |---|---|---|
+| `POST` | `/api/persons` | 인물 생성 |
 | `GET` | `/api/persons` | 전체 인물 목록 |
 | `GET` | `/api/persons/{id}` | 인물 상세 |
 | `PUT` | `/api/persons/{id}` | 인물 정보 수정 |
-| `DELETE` | `/api/persons/{id}` | 인물 삭제 |
+| `DELETE` | `/api/persons/{id}` | 인물 삭제 (face_db 이미지 포함) |
+
+### 인식 로그
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `GET` | `/api/logs` | 인식 로그 조회 (페이지네이션) |
+| `GET` | `/api/logs/stats` | 인식 통계 |
+| `DELETE` | `/api/logs/cleanup` | 오래된 로그 삭제 |
 
 ### 동물 탐지
 | 메서드 | 경로 | 설명 |
@@ -83,13 +103,31 @@ python -m streamlit run app.py --server.port 8501
 | `GET` | `/api/plant/logs` | 탐지 로그 조회 |
 | `GET` | `/api/plant/logs/{id}/image` | 탐지 크롭 이미지 다운로드 |
 
-### 인원 카운팅
+### 인원 카운팅 (멀티카메라)
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| `GET` | `/api/count/status` | 카운터 상태 |
-| `GET` | `/api/count/current` | 현재 인원 수 |
-| `POST` | `/api/count/camera/pause` | 카메라 점유 해제 |
-| `POST` | `/api/count/camera/resume` | 카메라 재개 |
+| `GET` | `/api/count/cameras` | 전체 카메라 상태 목록 |
+| `POST` | `/api/count/cameras` | 런타임 카메라 추가 |
+| `DELETE` | `/api/count/cameras/{camera_id}` | 카메라 제거 |
+| `GET` | `/api/count/aggregate` | 전체 카메라 합산 인원수 |
+| `GET` | `/api/count/cameras/{camera_id}/status` | 특정 카메라 상태 |
+| `GET` | `/api/count/cameras/{camera_id}/events` | 특정 카메라 라인 크로싱 이벤트 |
+| `POST` | `/api/count/cameras/{camera_id}/reset` | 카운트 초기화 |
+| `POST` | `/api/count/cameras/{camera_id}/pause` | 카메라 일시 해제 |
+| `POST` | `/api/count/cameras/{camera_id}/resume` | 카메라 재개 |
+| `GET` | `/api/count/status` | 첫 번째 카메라 상태 (하위 호환) |
+
+---
+
+## 모델 구성
+
+| 기능 | 모델 파일 | 백엔드 |
+|---|---|---|
+| 얼굴 임베딩 | ArcFace (deepface 내장) | TensorFlow / RetinaFace 검출 |
+| 얼굴 인메모리 검색 | FAISS `IndexFlatIP` (코사인) | CPU |
+| 사람 감지·추적 | `models/4people-yolo26n.pt` + ByteTrack | CUDA:0 |
+| 동물 감지 | `models/best-4animals-yolo26m-hpo.pt` | CUDA:0 |
+| 식물 병해 탐지 | `models/best-4plants-fasterRCNN.pt` (ConvNeXt+FPN) | CUDA:0 |
 
 ---
 
@@ -97,6 +135,17 @@ python -m streamlit run app.py --server.port 8501
 
 탐지 이벤트 발생 시 `RESULT_PUBLISHER_BASE_URL`로 JSON을 POST합니다.  
 전송 실패 시 로그만 남기고 서비스는 계속 동작합니다.
+
+---
+
+## 개발 도구
+
+| 파일/폴더 | 용도 |
+|---|---|
+| `_check_gpu.py` | GPU·TensorFlow·DeepFace 동작 확인 스크립트 |
+| `scripts/diag/` | 모델 진단 스크립트 (개발 중 문제 분석용, pytest 대상 아님) |
+| `tests/` | pytest 자동화 테스트 |
+
 
 ### 동물 탐지 — `POST /api/detections/animal`
 ```json

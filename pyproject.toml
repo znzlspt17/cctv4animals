@@ -1,7 +1,7 @@
 [project]
 name = "deepface-live"
 version = "0.1.0"
-description = "Add your description here"
+description = "CCTV 기반 실시간 AI 엣지 서버 — 얼굴 인식, 동물·식물 탐지, 인원 카운팅 통합 시스템"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

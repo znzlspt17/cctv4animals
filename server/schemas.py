@@ -92,14 +92,6 @@ class LogStatsResponse(BaseModel):
     person_stats: list[dict]
 
 
-class AlertResponse(BaseModel):
-    id: int
-    person_id: int
-    alert_type: str
-    message: str
-    is_active: bool
-
-
 # ── Camera Schemas ──
 
 
