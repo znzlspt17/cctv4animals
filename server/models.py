@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
@@ -12,11 +14,16 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
-    func,
 )
 from sqlalchemy.orm import relationship
 
 from server.database import Base
+
+_KST = timezone(timedelta(hours=9))
+
+
+def _now_kst() -> datetime:
+    return datetime.now(_KST)
 
 
 class Person(Base):
@@ -28,8 +35,8 @@ class Person(Base):
     phone = Column(String(50), nullable=True)
     address = Column(Text, nullable=True)
     extra_info = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=_now_kst)
+    updated_at = Column(DateTime(timezone=True), default=_now_kst, onupdate=_now_kst)
 
     face_images = relationship(
         "FaceImage", back_populates="person", cascade="all, delete-orphan"
@@ -51,7 +58,7 @@ class FaceImage(Base):
     capture_condition = Column(String(100), nullable=True)
     embedding = Column(LargeBinary, nullable=True)
     embedding_vec = Column(Vector(512), nullable=True)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime(timezone=True), default=_now_kst)
 
     person = relationship("Person", back_populates="face_images")
 
@@ -68,7 +75,7 @@ class RecognitionLog(Base):
     )
     confidence = Column(Float, nullable=False)
     snapshot_path = Column(String(500), nullable=True)
-    recognized_at = Column(DateTime, default=func.now(), index=True)
+    recognized_at = Column(DateTime(timezone=True), default=_now_kst, index=True)
 
     person = relationship("Person", back_populates="recognition_logs")
 
@@ -100,7 +107,7 @@ class TrackingEvent(Base):
     bbox_w = Column(Integer, nullable=True)
     bbox_h = Column(Integer, nullable=True)
     snapshot_path = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=func.now(), index=True)
+    created_at = Column(DateTime(timezone=True), default=_now_kst, index=True)
 
 
 class AnimalDetectionLog(Base):
@@ -117,7 +124,7 @@ class AnimalDetectionLog(Base):
     bbox_x2 = Column(Float, nullable=True)
     bbox_y2 = Column(Float, nullable=True)
     image_data = Column(LargeBinary, nullable=True)
-    detected_at = Column(DateTime, default=func.now(), index=True)
+    detected_at = Column(DateTime(timezone=True), default=_now_kst, index=True)
 
     __table_args__ = (
         Index("ix_animal_logs_class_at", "class_name", "detected_at"),
@@ -149,7 +156,7 @@ class PlantDetectionLog(Base):
     area = Column(Integer, nullable=True)
     area_name = Column(String(50), nullable=True)
     image_data = Column(LargeBinary, nullable=True)
-    detected_at = Column(DateTime, default=func.now(), index=True)
+    detected_at = Column(DateTime(timezone=True), default=_now_kst, index=True)
 
     __table_args__ = (
         Index("ix_plant_logs_class_at", "class_name", "detected_at"),

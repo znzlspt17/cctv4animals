@@ -9,10 +9,12 @@ import json
 import logging
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from server.config import settings
+
+_KST = timezone(timedelta(hours=9))
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +65,7 @@ def publish_animal_detection(
         "bbox_y1": round(y1, 2),
         "bbox_x2": round(x2, 2),
         "bbox_y2": round(y2, 2),
-        "detected_at": datetime.now(tz=timezone.utc).isoformat(),
+        "detected_at": datetime.now(tz=_KST).isoformat(),
     }
     if image_url:
         body["image_url"] = image_url
@@ -101,7 +103,7 @@ def publish_plant_detection(
         "shooting_type": shooting_type,
         "grow_stage": grow_stage,
         "area": area,
-        "detected_at": datetime.now(tz=timezone.utc).isoformat(),
+        "detected_at": datetime.now(tz=_KST).isoformat(),
     }
     if image_url:
         body["image_url"] = image_url
@@ -117,7 +119,7 @@ def publish_event(
     body: dict[str, Any] = {
         "event_type": event_type,
         "camera_id": camera_id,
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": datetime.now(tz=_KST).isoformat(),
         "payload": payload,
     }
     _post("/api/events", body)
