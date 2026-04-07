@@ -281,45 +281,51 @@ with tab3:
 # ══════════════════════════════════════════════
 with tab4:
     st.header("식물 탐지")
-    if not st.session_state.plant_svc:
-        st.warning("사이드바에서 서비스를 먼저 연결하세요.")
-    else:
-        col1, col2 = st.columns(2)
-        with col1:
-            upload = st.file_uploader("이미지 업로드", type=["jpg", "jpeg", "png"], key="plant_img")
-        with col2:
-            conf_thr = st.slider("Confidence 임계값", 0.05, 1.0, 0.15, 0.05, key="plant_conf")
+    col1, col2 = st.columns(2)
+    with col1:
+        upload = st.file_uploader("이미지 업로드", type=["jpg", "jpeg", "png"], key="plant_img")
+    with col2:
+        conf_thr = st.slider("Confidence 임계값", 0.05, 1.0, 0.15, 0.05, key="plant_conf")
 
-        if upload and st.button("🌿 탐지 실행", use_container_width=True):
-            upload.seek(0)
-            img_bgr = bytes_to_bgr(upload)
-            img_rgb = bgr_to_rgb(img_bgr)
+    if upload and st.button("🌿 탐지 실행", use_container_width=True):
+        import requests as _requests
+        upload.seek(0)
+        img_bytes = upload.read()
+        img_bgr = bytes_to_bgr(io.BytesIO(img_bytes))
+        img_rgb = bgr_to_rgb(img_bgr)
 
-            plant_svc = st.session_state.plant_svc
-            result = plant_svc.detect(img_bgr, conf_threshold=conf_thr)
+        # FastAPI를 통해 탐지 + DB 저장
+        try:
+            resp = _requests.post(
+                "http://localhost:8000/api/plant/detect",
+                files={"file": (upload.name, img_bytes, "image/jpeg")},
+                params={"conf": conf_thr},
+                timeout=30,
+            )
+            api_result = resp.json() if resp.ok else {}
+        except Exception as e:
+            st.warning(f"FastAPI 호출 실패: {e}")
+            api_result = {}
 
-            if not result.has_plant:
-                st.warning(
-                    "⚠️ 탐지 결과 없음\n\n"
-                    "현재 모델은 5 에폭 학습으로 ROI 분류 헤드가 수렴되지 않아 "
-                    "모든 영역을 배경으로 예측합니다. "
-                    "실사용을 위해 12 에폭 이상 재학습이 필요합니다."
-                )
-                st.image(img_rgb, use_container_width=True)
-            else:
-                for det in result.detections:
-                    x1, y1, x2, y2 = det.bbox
-                    label = f"{det.class_name} {det.confidence:.2f}"
-                    img_rgb = draw_xyxy(img_rgb, x1, y1, x2, y2, label, color=(34, 139, 34))
+        detections = api_result.get("detections", [])
 
-                st.image(img_rgb, caption=f"탐지 {len(result.detections)}개", use_container_width=True)
-                st.dataframe(
-                    [
-                        {"클래스": d.class_name, "confidence": round(d.confidence, 4),
-                         "bbox": [round(v, 1) for v in d.bbox]}
-                        for d in result.detections
-                    ]
-                )
+        if not detections:
+            st.info("탐지된 식물 없음")
+            st.image(img_rgb, use_container_width=True)
+        else:
+            for det in detections:
+                x1, y1, x2, y2 = det["bbox"]
+                label = f"{det['class_name']} {det['confidence']:.2f}"
+                img_rgb = draw_xyxy(img_rgb, x1, y1, x2, y2, label, color=(34, 139, 34))
+
+            st.image(img_rgb, caption=f"탐지 {len(detections)}개", use_container_width=True)
+            st.dataframe(
+                [
+                    {"클래스": d["class_name"], "confidence": round(d["confidence"], 4),
+                     "bbox": [round(v, 1) for v in d["bbox"]]}
+                    for d in detections
+                ]
+            )
 
 
 # ══════════════════════════════════════════════
