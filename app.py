@@ -13,6 +13,13 @@ import cv2
 import numpy as np
 import streamlit as st
 
+# streamlit-drawable-canvas 0.9.3 호환성 패치
+# Streamlit 1.x 신버전에서 image_to_url이 elements.lib.image_utils로 이동됨
+import streamlit.elements.image as _st_img_mod
+if not hasattr(_st_img_mod, "image_to_url"):
+    from streamlit.elements.lib.image_utils import image_to_url as _image_to_url
+    _st_img_mod.image_to_url = _image_to_url
+
 st.set_page_config(page_title="DeepFace Live 테스트", layout="wide")
 
 # ──────────────────────────────────────────────
