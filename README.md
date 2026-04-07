@@ -114,6 +114,8 @@ python -m streamlit run app.py --server.port 8501
 ```
 
 ### 식물 탐지 — `POST /api/detections/plant`
+> **전송 제외 조건**: `class_name == "normal"` 이고 `confidence < 0.5` 인 결과는 DB에만 저장되고 외부 서버로 전송되지 않습니다.
+
 ```json
 {
   "source": "cam-center-01",

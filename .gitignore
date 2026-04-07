@@ -18,3 +18,11 @@ __pycache__/
 # IDEs
 .idea/
 .vscode/
+
+# Jupyter notebooks (실험용)
+strawberry_test.ipynb
+test copy.ipynb
+test.ipynb
+
+# 이미지 데이터
+images/
