@@ -86,47 +86,47 @@ class PlantDetectionResult:
 
 
 def _build_model(num_classes: int) -> torch.nn.Module:
-    """ConvNeXt-Small + FPN 기반 Faster R-CNN 모델 구조 재구성."""
-    import torch.nn as nn
+    """ConvNeXt-Small + FPN 기반 Faster R-CNN 모델 구조 재구성.
+
+    학습 노트북(strawberry_test.ipynb)의 build_convnext_fasterrcnn과 동일한 구조:
+    - BackboneWithFPN: return_layers={"2":"0","4":"1","6":"2"} (downsampling 레이어)
+    - ROI pooler: featmap_names=["0","1","2","pool"] (LastLevelMaxPool 포함)
+    - 4 anchor sizes, min/max size=640
+    """
     import torchvision
+    from torchvision.models import convnext_small
     from torchvision.models.detection import FasterRCNN
+    from torchvision.models.detection.backbone_utils import BackboneWithFPN
     from torchvision.models.detection.rpn import AnchorGenerator
-    from torchvision.models._utils import IntermediateLayerGetter
-    from torchvision.ops import FeaturePyramidNetwork
 
-    # BackboneWithFPN을 직접 조립 — extra_blocks 없이 FPN 3레벨만 출력
-    class _BackboneFPN(nn.Module):
-        def __init__(self):
-            super().__init__()
-            convnext = torchvision.models.convnext_small(weights=None)
-            body_seq = convnext.features[:7]  # features[0:6] → indices 0-6
-            self.body = IntermediateLayerGetter(
-                body_seq,
-                return_layers={"3": "0", "5": "1", "6": "2"},
-            )
-            self.fpn = FeaturePyramidNetwork(
-                in_channels_list=[192, 384, 768],
-                out_channels=256,
-                extra_blocks=None,  # MaxPool 없이 3 레벨만
-            )
-            self.out_channels = 256
+    backbone_body = convnext_small(weights=None).features
 
-        def forward(self, x):
-            return self.fpn(self.body(x))
+    backbone = BackboneWithFPN(
+        backbone=backbone_body,
+        return_layers={"2": "0", "4": "1", "6": "2"},
+        in_channels_list=[192, 384, 768],
+        out_channels=256,
+    )
 
-    backbone = _BackboneFPN()
-
-    # 3 FPN 레벨에 맞는 anchor generator
     anchor_generator = AnchorGenerator(
-        sizes=((32,), (64,), (128,)),
-        aspect_ratios=((0.5, 1.0, 2.0),) * 3,
+        sizes=((32,), (64,), (128,), (256,)),
+        aspect_ratios=((0.5, 1.0, 2.0),) * 4,
+    )
+
+    roi_pooler = torchvision.ops.MultiScaleRoIAlign(
+        featmap_names=["0", "1", "2", "pool"],
+        output_size=7,
+        sampling_ratio=2,
     )
 
     return FasterRCNN(
         backbone=backbone,
         num_classes=num_classes,
         rpn_anchor_generator=anchor_generator,
-        box_score_thresh=0.001,   # 내부 hard floor 낮춤 — 실제 필터는 detect()의 conf_threshold
+        box_roi_pool=roi_pooler,
+        min_size=640,
+        max_size=640,
+        box_score_thresh=0.001,
     )
 
 
