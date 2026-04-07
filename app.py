@@ -14,11 +14,19 @@ import numpy as np
 import streamlit as st
 
 # streamlit-drawable-canvas 0.9.3 호환성 패치
-# Streamlit 1.x 신버전에서 image_to_url이 elements.lib.image_utils로 이동됨
+# 구버전: image_to_url(image, width:int, clamp, channels, output_format, image_id)
+# 신버전: image_to_url(image, layout_config:LayoutConfig, clamp, channels, output_format, image_id)
 import streamlit.elements.image as _st_img_mod
-if not hasattr(_st_img_mod, "image_to_url"):
-    from streamlit.elements.lib.image_utils import image_to_url as _image_to_url
-    _st_img_mod.image_to_url = _image_to_url
+from streamlit.elements.lib.image_utils import image_to_url as _new_image_to_url
+from streamlit.elements.lib.layout_utils import LayoutConfig as _LayoutConfig
+
+def _compat_image_to_url(image, layout_config_or_width, clamp=False, channels="RGB", output_format="auto", image_id=""):
+    """canvas 0.9.3이 width(int)로 호출할 때 LayoutConfig 객체로 변환."""
+    if isinstance(layout_config_or_width, int):
+        layout_config_or_width = _LayoutConfig(width=layout_config_or_width)
+    return _new_image_to_url(image, layout_config_or_width, clamp, channels, output_format, image_id)
+
+_st_img_mod.image_to_url = _compat_image_to_url
 
 st.set_page_config(page_title="DeepFace Live 테스트", layout="wide")
 
