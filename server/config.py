@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     # FastAPI
     FASTAPI_HOST: str = "0.0.0.0"
     FASTAPI_PORT: int = 8000
+    # 이미지 다운로드 URL 생성에 사용할 공개 IP/호스트 (비어 있으면 request.base_url 사용)
+    FASTAPI_PUBLIC_HOST: str = ""
 
     # Face Recognition
     FACE_DB_PATH: str = "face_db"

@@ -7,6 +7,7 @@ import numpy as np
 from fastapi import APIRouter, Request, UploadFile, File, Query, Body
 from fastapi.responses import JSONResponse, Response
 
+from server.config import settings
 from server.services.common.result_publisher import publish_animal_detection
 
 router = APIRouter(tags=["animal"])
@@ -40,7 +41,9 @@ async def animal_detect(
 
     # 탐지 결과 DB 저장 및 외부 전송
     camera_id = "cam-center-01"
-    _base_url = str(request.base_url).rstrip("/")
+    _base_url = (settings.FASTAPI_PUBLIC_HOST.rstrip("/")
+                 if settings.FASTAPI_PUBLIC_HOST
+                 else str(request.base_url).rstrip("/"))
     for d in result.detections:
         # bbox 영역 크롭 → JPEG 바이트
         _x1, _y1, _x2, _y2 = (int(v) for v in d.bbox)

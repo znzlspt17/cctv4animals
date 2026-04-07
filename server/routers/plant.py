@@ -49,7 +49,9 @@ async def plant_detect(
     # 탐지 결과 DB 저장 및 외부 전송
     repo = request.app.state.repo
     camera_id = request.headers.get("X-Camera-Id", "unknown")
-    _base_url = str(request.base_url).rstrip("/")
+    _base_url = (settings.FASTAPI_PUBLIC_HOST.rstrip("/")
+                 if settings.FASTAPI_PUBLIC_HOST
+                 else str(request.base_url).rstrip("/"))
     for d in result.detections:
         # bbox 영역 크롭 → JPEG 바이트
         _x1, _y1, _x2, _y2 = (int(v) for v in d.bbox)
