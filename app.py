@@ -498,51 +498,50 @@ with tab6:
         frame_step = int(_opt2.number_input("N프레임마다 처리 (동영상만)", min_value=1, value=5, step=1, key="frame_step"))
 
         # ── 업로드 즉시 첫 프레임 추출 → 캔버스 배경 캐시 ──────────────────────────
-        from PIL import Image as _PILImage_pre
-        import io as _io_pre
-
-        _upload_key = getattr(video_upload, "name", None) or (
-            sorted(imgs_upload, key=lambda f: f.name)[0].name if imgs_upload else None
-        )
-        # 파일명이 바뀔 때만 재추출
-        if _upload_key and _upload_key != st.session_state.canvas_frame_key:
-            _pre_frame_rgb = None
-            if input_mode == "🎬 동영상 파일" and video_upload:
-                video_upload.seek(0)
-                _raw_bytes = video_upload.read()
-                _pre_frame_rgb = None
-                import tempfile as _ptmp2, os as _pos2
-                _tf2 = _ptmp2.NamedTemporaryFile(delete=False, suffix=".mp4")
-                _tf2.write(_raw_bytes)
-                _tf2.close()  # Windows에서 반드시 닫은 뒤 cv2로 열어야 함
-                _cap2 = cv2.VideoCapture(_tf2.name)
-                _ret2, _bgr = _cap2.read()
-                _cap2.release()
+        @st.cache_data(show_spinner=False)
+        def _extract_first_frame(file_bytes: bytes, is_video: bool):
+            """파일 바이트에서 첫 프레임을 BGR numpy로 반환. cache_data로 해시 기반 캐시."""
+            import tempfile as _tf_mod, os as _os_mod
+            if is_video:
+                _tmp = _tf_mod.NamedTemporaryFile(delete=False, suffix=".mp4")
+                _tmp.write(file_bytes)
+                _tmp.close()
+                _cap = cv2.VideoCapture(_tmp.name)
+                _ret, _bgr = _cap.read()
+                _cap.release()
                 try:
-                    _pos2.unlink(_tf2.name)
+                    _os_mod.unlink(_tmp.name)
                 except Exception:
                     pass
-                if _ret2 and _bgr is not None:
-                    _pre_frame_rgb = bgr_to_rgb(_bgr)
-            elif input_mode == "🖼️ 이미지 시퀀스" and imgs_upload:
-                _first_f = sorted(imgs_upload, key=lambda f: f.name)[0]
-                _first_f.seek(0)
-                _arr = np.frombuffer(_first_f.read(), dtype=np.uint8)
-                _bgr = cv2.imdecode(_arr, cv2.IMREAD_COLOR)
-                if _bgr is not None:
-                    _pre_frame_rgb = bgr_to_rgb(_bgr)
+                return _bgr if _ret else None
+            else:
+                _arr = np.frombuffer(file_bytes, dtype=np.uint8)
+                return cv2.imdecode(_arr, cv2.IMREAD_COLOR)
 
-            if _pre_frame_rgb is not None:
-                _oh, _ow = _pre_frame_rgb.shape[:2]
-                _cw = min(800, _ow)
-                _ch = int(_oh * _cw / _ow)
-                _resized = cv2.resize(_pre_frame_rgb, (_cw, _ch))
-                st.session_state.canvas_bg_pil = _PILImage_pre.fromarray(_resized)
-                st.session_state.canvas_orig_w = _ow
-                st.session_state.canvas_orig_h = _oh
-                st.session_state.canvas_w = _cw
-                st.session_state.canvas_h = _ch
-                st.session_state.canvas_frame_key = _upload_key
+        from PIL import Image as _PILImage_pre
+        _first_bgr = None
+        if input_mode == "🎬 동영상 파일" and video_upload:
+            video_upload.seek(0)
+            _vbytes = video_upload.read()
+            if _vbytes:
+                _first_bgr = _extract_first_frame(_vbytes, True)
+        elif input_mode == "🖼️ 이미지 시퀀스" and imgs_upload:
+            _first_f2 = sorted(imgs_upload, key=lambda f: f.name)[0]
+            _first_f2.seek(0)
+            _ibytes = _first_f2.read()
+            if _ibytes:
+                _first_bgr = _extract_first_frame(_ibytes, False)
+
+        if _first_bgr is not None:
+            _oh, _ow = _first_bgr.shape[:2]
+            _cw = min(800, _ow)
+            _ch = int(_oh * _cw / _ow)
+            _resized_rgb = cv2.resize(bgr_to_rgb(_first_bgr), (_cw, _ch))
+            st.session_state.canvas_bg_pil = _PILImage_pre.fromarray(_resized_rgb)
+            st.session_state.canvas_orig_w = _ow
+            st.session_state.canvas_orig_h = _oh
+            st.session_state.canvas_w = _cw
+            st.session_state.canvas_h = _ch
 
         # ── 폴리곤 바운더리 설정 (캔버스) ──────────────────────────
         with st.expander("🔲 탐지 영역 — 캔버스에서 직접 그리기", expanded=st.session_state.use_polygon):
