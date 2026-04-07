@@ -84,6 +84,36 @@ def draw_xyxy(img_rgb: np.ndarray, x1, y1, x2, y2, label: str, color=(255, 140, 
     return out
 
 
+def draw_polygon_on_frame(img_rgb: np.ndarray, pts: list[tuple[int, int]]) -> np.ndarray:
+    """6꼭지점 폴리곤을 이미지(RGB)에 그린다. 꼭지점 번호 + 반투명 채우기 포함."""
+    if len(pts) < 2:
+        return img_rgb
+    out = img_rgb.copy()
+    poly = np.array(pts, dtype=np.int32)
+    # 반투명 채우기
+    overlay = out.copy()
+    cv2.fillPoly(overlay, [poly], color=(0, 180, 255))
+    cv2.addWeighted(overlay, 0.25, out, 0.75, 0, out)
+    # 외곽선
+    cv2.polylines(out, [poly], isClosed=True, color=(0, 180, 255), thickness=2)
+    # 꼭지점 + 번호
+    for i, (px, py) in enumerate(pts):
+        cv2.circle(out, (px, py), 7, (255, 80, 0), -1)
+        cv2.putText(out, f"P{i+1}", (px + 9, py - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+    return out
+
+
+def bbox_center_in_polygon(bbox: list[float], pts: list[tuple[int, int]]) -> bool:
+    """바운딩박스 중심점이 폴리곤 내부에 있으면 True."""
+    if len(pts) < 3:
+        return True  # 꼭지점 부족하면 필터 없이 통과
+    cx = (bbox[0] + bbox[2]) / 2
+    cy = (bbox[1] + bbox[3]) / 2
+    poly = np.array(pts, dtype=np.float32)
+    return cv2.pointPolygonTest(poly, (float(cx), float(cy)), False) >= 0
+
+
 # ──────────────────────────────────────────────
 # UI
 # ──────────────────────────────────────────────
@@ -390,10 +420,20 @@ with tab5:
 
 
 # ══════════════════════════════════════════════
-# TAB 6 — 라인 크로싱 테스트
+
+
 # ══════════════════════════════════════════════
+# TAB 6 — 동물 동영상 테스트
+# ══════════════════════════════════════════════
+# 세션: 폴리곤 꼭지점 기본값
+if "poly_pts" not in st.session_state:
+    st.session_state.poly_pts = [(100, 100), (400, 100), (600, 300),
+                                  (500, 500), (200, 500), (50, 300)]
+if "use_polygon" not in st.session_state:
+    st.session_state.use_polygon = False
+
 with tab6:
-    st.header("� 동물 탐지 테스트")
+    st.header("🔴 동물 탐지 테스트")
     st.caption("동영상 또는 이미지를 업로드하면 모든 프레임에서 동물을 추론하고 결과 영상을 생성합니다.")
 
     if not st.session_state.animal_svc:
@@ -430,10 +470,63 @@ with tab6:
         conf_crossing = _opt1.slider("Confidence", 0.1, 1.0, 0.4, 0.05, key="crossing_conf")
         frame_step = int(_opt2.number_input("N프레임마다 처리 (동영상만)", min_value=1, value=5, step=1, key="frame_step"))
 
+        # ── 폴리곤 바운더리 설정 ──────────────────────────
+        with st.expander("🔲 탐지 영역 (6꼭지점 폴리곤 필터)", expanded=st.session_state.use_polygon):
+            use_poly = st.checkbox(
+                "폴리곤 필터 활성화 — 바운딩 박스 중심이 폴리곤 내부일 때만 저장/표시",
+                value=st.session_state.use_polygon,
+                key="poly_enable",
+            )
+            st.session_state.use_polygon = use_poly
+
+            st.caption("각 꼭지점의 X·Y 픽셀 좌표를 입력하세요. 동영상/이미지 업로드 후 미리보기 버튼으로 확인하세요.")
+
+            _new_pts: list[tuple[int, int]] = []
+            _pcols = st.columns(3)
+            for _pi in range(6):
+                _cur_x, _cur_y = st.session_state.poly_pts[_pi]
+                with _pcols[_pi % 3]:
+                    _px = st.number_input(f"P{_pi+1} X", min_value=0, value=_cur_x, step=10, key=f"px_{_pi}")
+                    _py = st.number_input(f"P{_pi+1} Y", min_value=0, value=_cur_y, step=10, key=f"py_{_pi}")
+                _new_pts.append((int(_px), int(_py)))
+            st.session_state.poly_pts = _new_pts
+
+            # 첫 프레임에 폴리곤 미리보기
+            if st.button("🖼️ 첫 프레임에 폴리곤 미리보기", key="poly_preview"):
+                _preview_frame = None
+                if input_mode == "🎬 동영상 파일" and video_upload:
+                    import tempfile, os as _os_p
+                    video_upload.seek(0)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as _ptmp:
+                        _ptmp.write(video_upload.read())
+                        _ptmp_path = _ptmp.name
+                    _pcap = cv2.VideoCapture(_ptmp_path)
+                    _pret, _preview_frame = _pcap.read()
+                    _pcap.release()
+                    _os_p.unlink(_ptmp_path)
+                elif input_mode == "🖼️ 이미지 시퀀스" and imgs_upload:
+                    _first_img = sorted(imgs_upload, key=lambda f: f.name)[0]
+                    _first_img.seek(0)
+                    _pa = np.frombuffer(_first_img.read(), dtype=np.uint8)
+                    _preview_frame = cv2.imdecode(_pa, cv2.IMREAD_COLOR)
+
+                if _preview_frame is not None:
+                    _prev_rgb = bgr_to_rgb(_preview_frame)
+                    _prev_rgb = draw_polygon_on_frame(_prev_rgb, st.session_state.poly_pts)
+                    _h_p, _w_p = _prev_rgb.shape[:2]
+                    st.image(_prev_rgb,
+                             caption=f"첫 프레임 ({_w_p}×{_h_p}) — 폴리곤 미리보기",
+                             use_container_width=True)
+                else:
+                    st.warning("먼저 동영상 또는 이미지를 업로드하세요.")
+
+        # ── 실행 버튼 ──────────────────────────
         run_crossing = st.button("▶️ 테스트 실행", use_container_width=True, key="run_crossing")
 
         if run_crossing:
-            # 프레임 수집
+            _poly_filter = st.session_state.use_polygon
+            _poly_pts_run = st.session_state.poly_pts
+
             frames_to_process: list[tuple[int, np.ndarray]] = []
 
             if input_mode == "🎬 동영상 파일":
@@ -441,6 +534,7 @@ with tab6:
                     st.warning("동영상 파일을 먼저 업로드하세요.")
                 else:
                     import os, tempfile
+                    video_upload.seek(0)
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as _tmp:
                         _tmp.write(video_upload.read())
                         _tmp_path = _tmp.name
@@ -461,6 +555,7 @@ with tab6:
                 else:
                     _sorted_imgs = sorted(imgs_upload, key=lambda f: f.name)
                     for _i, _img_file in enumerate(_sorted_imgs):
+                        _img_file.seek(0)
                         _arr = np.frombuffer(_img_file.read(), dtype=np.uint8)
                         _frame = cv2.imdecode(_arr, cv2.IMREAD_COLOR)
                         if _frame is not None:
@@ -470,22 +565,39 @@ with tab6:
                 import tempfile, os as _os
 
                 total_det = 0
+                total_filtered = 0
                 det_log: list[dict] = []
                 rendered_bgr: list[np.ndarray] = []
+
+                _poly_arr = np.array(_poly_pts_run, dtype=np.int32) if _poly_filter else None
 
                 prog_bar = st.progress(0, text="프레임 추론 중…")
                 for _idx, (_fi, _frame) in enumerate(frames_to_process):
                     _det_result = animal_svc.detect(_frame, conf_threshold=conf_crossing)
-
                     _vis_bgr = _frame.copy()
 
-                    # 탐지 bbox — 녹색
+                    # 폴리곤 오버레이
+                    if _poly_filter and _poly_arr is not None:
+                        _ov = _vis_bgr.copy()
+                        cv2.fillPoly(_ov, [_poly_arr], color=(0, 180, 255))
+                        cv2.addWeighted(_ov, 0.15, _vis_bgr, 0.85, 0, _vis_bgr)
+                        cv2.polylines(_vis_bgr, [_poly_arr], isClosed=True, color=(0, 180, 255), thickness=2)
+
+                    _det_in_frame = 0
                     for _d in _det_result.detections:
+                        # 폴리곤 필터
+                        if _poly_filter and not bbox_center_in_polygon(_d.bbox, _poly_pts_run):
+                            total_filtered += 1
+                            _bx1, _by1, _bx2, _by2 = (int(v) for v in _d.bbox)
+                            cv2.rectangle(_vis_bgr, (_bx1, _by1), (_bx2, _by2), (100, 100, 100), 1)
+                            continue
+
                         _bx1, _by1, _bx2, _by2 = (int(v) for v in _d.bbox)
                         cv2.rectangle(_vis_bgr, (_bx1, _by1), (_bx2, _by2), (0, 200, 0), 2)
                         cv2.putText(_vis_bgr, f"{_d.class_name} {_d.confidence:.2f}",
                                     (_bx1, _by1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 0), 2)
                         total_det += 1
+                        _det_in_frame += 1
                         det_log.append({
                             "프레임": _fi,
                             "클래스": _d.class_name,
@@ -493,10 +605,8 @@ with tab6:
                             "bbox": [round(v, 2) for v in _d.bbox],
                         })
 
-                    _det_n = len(_det_result)
-                    cv2.putText(_vis_bgr, f"F:{_fi}  det:{_det_n}", (10, 28),
+                    cv2.putText(_vis_bgr, f"F:{_fi}  det:{_det_in_frame}", (10, 28),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-
                     rendered_bgr.append(_vis_bgr)
                     prog_bar.progress((_idx + 1) / len(frames_to_process),
                                       text=f"추론 중… {_idx + 1}/{len(frames_to_process)}")
@@ -527,9 +637,11 @@ with tab6:
                 # ── 결과 표시 ──────────────────────────
                 st.divider()
                 st.subheader("📊 결과")
-                _m1, _m2 = st.columns(2)
-                _m1.metric("총 탐지 수", total_det)
+                _m1, _m2, _m3 = st.columns(3)
+                _m1.metric("탐지 수 (폴리곤 내)", total_det)
                 _m2.metric("처리 프레임 수", len(frames_to_process))
+                if _poly_filter:
+                    _m3.metric("폴리곤 밖 제외", total_filtered)
 
                 # 영상 생성
                 _h, _w = rendered_bgr[0].shape[:2]
@@ -562,4 +674,3 @@ with tab6:
                     st.dataframe(det_log, use_container_width=True)
                 else:
                     st.info("탐지된 동물이 없습니다.")
-
