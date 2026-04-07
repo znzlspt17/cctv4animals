@@ -470,8 +470,8 @@ with tab6:
         conf_crossing = _opt1.slider("Confidence", 0.1, 1.0, 0.4, 0.05, key="crossing_conf")
         frame_step = int(_opt2.number_input("N프레임마다 처리 (동영상만)", min_value=1, value=5, step=1, key="frame_step"))
 
-        # ── 폴리곤 바운더리 설정 ──────────────────────────
-        with st.expander("🔲 탐지 영역 (6꼭지점 폴리곤 필터)", expanded=st.session_state.use_polygon):
+        # ── 폴리곤 바운더리 설정 (캔버스) ──────────────────────────
+        with st.expander("🔲 탐지 영역 — 캔버스에서 직접 그리기", expanded=st.session_state.use_polygon):
             use_poly = st.checkbox(
                 "폴리곤 필터 활성화 — 바운딩 박스 중심이 폴리곤 내부일 때만 저장/표시",
                 value=st.session_state.use_polygon,
@@ -479,46 +479,97 @@ with tab6:
             )
             st.session_state.use_polygon = use_poly
 
-            st.caption("각 꼭지점의 X·Y 픽셀 좌표를 입력하세요. 동영상/이미지 업로드 후 미리보기 버튼으로 확인하세요.")
+            st.caption(
+                "아래 캔버스에서 **클릭**으로 꼭지점을 추가하고, **더블클릭**으로 폴리곤을 완성하세요. "
+                "동영상/이미지를 먼저 업로드하면 첫 프레임이 배경으로 표시됩니다."
+            )
 
-            _new_pts: list[tuple[int, int]] = []
-            _pcols = st.columns(3)
-            for _pi in range(6):
-                _cur_x, _cur_y = st.session_state.poly_pts[_pi]
-                with _pcols[_pi % 3]:
-                    _px = st.number_input(f"P{_pi+1} X", min_value=0, value=_cur_x, step=10, key=f"px_{_pi}")
-                    _py = st.number_input(f"P{_pi+1} Y", min_value=0, value=_cur_y, step=10, key=f"py_{_pi}")
-                _new_pts.append((int(_px), int(_py)))
-            st.session_state.poly_pts = _new_pts
+            from streamlit_drawable_canvas import st_canvas
+            from PIL import Image as _PILImage
 
-            # 첫 프레임에 폴리곤 미리보기
-            if st.button("🖼️ 첫 프레임에 폴리곤 미리보기", key="poly_preview"):
-                _preview_frame = None
-                if input_mode == "🎬 동영상 파일" and video_upload:
-                    import tempfile, os as _os_p
-                    video_upload.seek(0)
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as _ptmp:
-                        _ptmp.write(video_upload.read())
-                        _ptmp_path = _ptmp.name
-                    _pcap = cv2.VideoCapture(_ptmp_path)
-                    _pret, _preview_frame = _pcap.read()
-                    _pcap.release()
-                    _os_p.unlink(_ptmp_path)
-                elif input_mode == "🖼️ 이미지 시퀀스" and imgs_upload:
-                    _first_img = sorted(imgs_upload, key=lambda f: f.name)[0]
-                    _first_img.seek(0)
-                    _pa = np.frombuffer(_first_img.read(), dtype=np.uint8)
-                    _preview_frame = cv2.imdecode(_pa, cv2.IMREAD_COLOR)
+            # 첫 프레임 추출해서 캔버스 배경으로 사용
+            _canvas_bg_pil = None
+            _orig_w, _orig_h = 640, 360
+            _canvas_w, _canvas_h = 640, 360
 
-                if _preview_frame is not None:
-                    _prev_rgb = bgr_to_rgb(_preview_frame)
-                    _prev_rgb = draw_polygon_on_frame(_prev_rgb, st.session_state.poly_pts)
-                    _h_p, _w_p = _prev_rgb.shape[:2]
-                    st.image(_prev_rgb,
-                             caption=f"첫 프레임 ({_w_p}×{_h_p}) — 폴리곤 미리보기",
-                             use_container_width=True)
-                else:
-                    st.warning("먼저 동영상 또는 이미지를 업로드하세요.")
+            if input_mode == "🎬 동영상 파일" and video_upload:
+                import tempfile as _tv_tmp, os as _os_cv
+                video_upload.seek(0)
+                with _tv_tmp.NamedTemporaryFile(delete=False, suffix=".mp4") as _cv_tmp:
+                    _cv_tmp.write(video_upload.read())
+                    _cv_tmp_path = _cv_tmp.name
+                _cv_cap = cv2.VideoCapture(_cv_tmp_path)
+                _cv_ret, _cv_frame = _cv_cap.read()
+                _cv_cap.release()
+                _os_cv.unlink(_cv_tmp_path)
+                if _cv_ret and _cv_frame is not None:
+                    _orig_h, _orig_w = _cv_frame.shape[:2]
+                    _canvas_w = min(800, _orig_w)
+                    _canvas_h = int(_orig_h * _canvas_w / _orig_w)
+                    _canvas_bg_pil = _PILImage.fromarray(
+                        cv2.resize(bgr_to_rgb(_cv_frame), (_canvas_w, _canvas_h))
+                    )
+            elif input_mode == "🖼️ 이미지 시퀀스" and imgs_upload:
+                _first_img_f = sorted(imgs_upload, key=lambda f: f.name)[0]
+                _first_img_f.seek(0)
+                _cv_arr = np.frombuffer(_first_img_f.read(), dtype=np.uint8)
+                _cv_frame2 = cv2.imdecode(_cv_arr, cv2.IMREAD_COLOR)
+                if _cv_frame2 is not None:
+                    _orig_h, _orig_w = _cv_frame2.shape[:2]
+                    _canvas_w = min(800, _orig_w)
+                    _canvas_h = int(_orig_h * _canvas_w / _orig_w)
+                    _canvas_bg_pil = _PILImage.fromarray(
+                        cv2.resize(bgr_to_rgb(_cv_frame2), (_canvas_w, _canvas_h))
+                    )
+
+            _draw_col, _info_col = st.columns([3, 1])
+            with _draw_col:
+                _canvas_result = st_canvas(
+                    fill_color="rgba(0, 180, 255, 0.20)",
+                    stroke_color="#00B4FF",
+                    stroke_width=2,
+                    background_image=_canvas_bg_pil,
+                    drawing_mode="polygon",
+                    height=_canvas_h,
+                    width=_canvas_w,
+                    key="polygon_canvas",
+                    update_streamlit=True,
+                    display_toolbar=True,
+                )
+            with _info_col:
+                st.markdown("**사용법**")
+                st.markdown(
+                    "1. 클릭으로 꼭지점 추가  \n"
+                    "2. 더블클릭으로 폴리곤 완성  \n"
+                    "3. 🗑️ 툴바 버튼으로 초기화"
+                )
+                if st.session_state.poly_pts:
+                    st.markdown(f"**현재 꼭지점:** {len(st.session_state.poly_pts)}개")
+                    for _pi2, (_ppx, _ppy) in enumerate(st.session_state.poly_pts):
+                        st.text(f"P{_pi2 + 1}: ({_ppx}, {_ppy})")
+
+            # 캔버스에서 폴리곤 좌표 추출 → session_state 업데이트
+            if _canvas_result.json_data and _canvas_result.json_data.get("objects"):
+                _last_obj = _canvas_result.json_data["objects"][-1]
+                if _last_obj.get("type") == "path":
+                    _obj_left = float(_last_obj.get("left", 0))
+                    _obj_top = float(_last_obj.get("top", 0))
+                    _raw_path = _last_obj.get("path", [])
+                    _canvas_pts: list[tuple[float, float]] = []
+                    for _cmd in _raw_path:
+                        if isinstance(_cmd, list) and _cmd[0] in ("M", "L") and len(_cmd) >= 3:
+                            _canvas_pts.append((float(_cmd[1]) + _obj_left,
+                                                float(_cmd[2]) + _obj_top))
+                    # 닫기 명령으로 추가된 중복 첫 점 제거
+                    if len(_canvas_pts) > 1 and _canvas_pts[-1] == _canvas_pts[0]:
+                        _canvas_pts = _canvas_pts[:-1]
+                    if len(_canvas_pts) >= 3:
+                        # 캔버스 표시 크기 → 실제 프레임 크기로 스케일 변환
+                        _sx = _orig_w / _canvas_w
+                        _sy = _orig_h / _canvas_h
+                        st.session_state.poly_pts = [
+                            (int(x * _sx), int(y * _sy)) for x, y in _canvas_pts
+                        ]
 
         # ── 실행 버튼 ──────────────────────────
         run_crossing = st.button("▶️ 테스트 실행", use_container_width=True, key="run_crossing")
