@@ -479,6 +479,7 @@ with tab6:
                             "프레임": _fi,
                             "클래스": _d.class_name,
                             "confidence": round(_d.confidence, 4),
+                            "bbox": [round(v, 2) for v in _d.bbox],
                         })
 
                     _det_n = len(_det_result)
@@ -495,7 +496,7 @@ with tab6:
                 if det_log:
                     import requests as _req
                     _payload = [
-                        {"class_name": d["클래스"], "confidence": d["confidence"], "bbox": []}
+                        {"class_name": d["클래스"], "confidence": d["confidence"], "bbox": d.get("bbox", [])}
                         for d in det_log
                     ]
                     try:
