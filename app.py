@@ -114,7 +114,7 @@ with st.sidebar:
     if st.session_state.plant_svc:
         st.metric("식물 모델", "✅ 로드됨" if st.session_state.plant_svc.is_ready() else "❌ 미로드")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["👤 얼굴 등록", "🔍 얼굴 인식", "🐾 동물 탐지", "🌿 식물 탐지", "📋 인물 목록", "🔴 라인 크로싱 테스트"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["👤 얼굴 등록", "🔍 얼굴 인식", "🐾 동물 탐지", "🌿 식물 탐지", "📋 인물 목록", "🔴 동물 동영상 테스트"])
 
 
 # ══════════════════════════════════════════════
@@ -248,17 +248,20 @@ with tab3:
 
             # DB 저장
             repo = st.session_state.repo
-            if repo:
-                for d in result.detections:
-                    try:
-                        repo.animal_detection_log.create(
-                            class_name=d.class_name,
-                            confidence=d.confidence,
-                            bbox=d.bbox,
-                            source="streamlit",
-                        )
-                    except Exception as e:
-                        st.warning(f"DB 저장 실패: {e}")
+            if repo is None:
+                from server.repositories import get_repository
+                repo = get_repository()
+                st.session_state.repo = repo
+            for d in result.detections:
+                try:
+                    repo.animal_detection_log.create(
+                        class_name=d.class_name,
+                        confidence=d.confidence,
+                        bbox=d.bbox,
+                        source="streamlit",
+                    )
+                except Exception as e:
+                    st.warning(f"DB 저장 실패: {e}")
 
             if not result.has_animal:
                 st.info("탐지된 동물 없음")
