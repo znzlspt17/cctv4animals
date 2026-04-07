@@ -122,7 +122,12 @@ def _build_model(num_classes: int) -> torch.nn.Module:
         aspect_ratios=((0.5, 1.0, 2.0),) * 3,
     )
 
-    return FasterRCNN(backbone=backbone, num_classes=num_classes, rpn_anchor_generator=anchor_generator)
+    return FasterRCNN(
+        backbone=backbone,
+        num_classes=num_classes,
+        rpn_anchor_generator=anchor_generator,
+        box_score_thresh=0.001,   # 내부 hard floor 낮춤 — 실제 필터는 detect()의 conf_threshold
+    )
 
 
 def _parse_output(output: dict, names: dict, conf_threshold: float) -> list[Detection]:

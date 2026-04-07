@@ -288,7 +288,7 @@ with tab4:
         with col1:
             upload = st.file_uploader("이미지 업로드", type=["jpg", "jpeg", "png"], key="plant_img")
         with col2:
-            conf_thr = st.slider("Confidence 임계값", 0.1, 1.0, 0.4, 0.05, key="plant_conf")
+            conf_thr = st.slider("Confidence 임계값", 0.05, 1.0, 0.15, 0.05, key="plant_conf")
 
         if upload and st.button("🌿 탐지 실행", use_container_width=True):
             upload.seek(0)
@@ -299,7 +299,12 @@ with tab4:
             result = plant_svc.detect(img_bgr, conf_threshold=conf_thr)
 
             if not result.has_plant:
-                st.info("탐지된 식물 없음")
+                st.warning(
+                    "⚠️ 탐지 결과 없음\n\n"
+                    "현재 모델은 5 에폭 학습으로 ROI 분류 헤드가 수렴되지 않아 "
+                    "모든 영역을 배경으로 예측합니다. "
+                    "실사용을 위해 12 에폭 이상 재학습이 필요합니다."
+                )
                 st.image(img_rgb, use_container_width=True)
             else:
                 for det in result.detections:
