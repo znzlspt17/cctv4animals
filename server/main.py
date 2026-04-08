@@ -63,6 +63,12 @@ async def lifespan(app: FastAPI):
     plant_service.warmup()
     app.state.plant_service = plant_service
 
+    # 8) LettuceService
+    from server.services.plant.lettuce_service import lettuce_service
+
+    lettuce_service.warmup()
+    app.state.lettuce_service = lettuce_service
+
     logger.info("Server ready.")
     yield
     logger.info("Shutting down...")
@@ -114,7 +120,7 @@ async def connection_error_handler(request: Request, exc: ConnectionError):
 
 
 # 라우터 등록
-from server.routers import animal, log, person, person_count, plant, recognition  # noqa: E402
+from server.routers import animal, lettuce, log, person, person_count, plant, recognition  # noqa: E402
 
 app.include_router(person.router, prefix="/api")
 app.include_router(log.router, prefix="/api")
@@ -122,3 +128,4 @@ app.include_router(recognition.router, prefix="/api")
 app.include_router(person_count.router, prefix="/api")
 app.include_router(animal.router, prefix="/api")
 app.include_router(plant.router, prefix="/api")
+app.include_router(lettuce.router, prefix="/api")

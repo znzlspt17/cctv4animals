@@ -45,6 +45,8 @@ if "animal_svc" not in st.session_state:
     st.session_state.animal_svc = None
 if "plant_svc" not in st.session_state:
     st.session_state.plant_svc = None
+if "lettuce_svc" not in st.session_state:
+    st.session_state.lettuce_svc = None
 
 
 # ──────────────────────────────────────────────
@@ -56,6 +58,7 @@ def load_services():
     from server.services.face.face_service import FaceService
     from server.services.animal.animal_service import AnimalService
     from server.services.plant.plant_service import PlantService
+    from server.services.plant.lettuce_service import LettuceService
 
     repo = get_repository()
 
@@ -72,7 +75,11 @@ def load_services():
     with st.spinner("식물 YOLO 모델 로딩 중…"):
         plant_svc.warmup()
 
-    return repo, face_svc, animal_svc, plant_svc
+    lettuce_svc = LettuceService()
+    with st.spinner("상추 모델 로딩 중…"):
+        lettuce_svc.warmup()
+
+    return repo, face_svc, animal_svc, plant_svc, lettuce_svc
 
 
 # ──────────────────────────────────────────────
@@ -145,11 +152,12 @@ with st.sidebar:
     if st.button("🔌 서비스 연결", use_container_width=True):
         with st.spinner("초기화 중…"):
             try:
-                repo, face_svc, animal_svc, plant_svc = load_services()
+                repo, face_svc, animal_svc, plant_svc, lettuce_svc = load_services()
                 st.session_state.repo = repo
                 st.session_state.face_svc = face_svc
                 st.session_state.animal_svc = animal_svc
                 st.session_state.plant_svc = plant_svc
+                st.session_state.lettuce_svc = lettuce_svc
                 st.success("연결 완료")
             except Exception as e:
                 st.error(f"초기화 실패: {e}")
@@ -162,8 +170,10 @@ with st.sidebar:
         st.metric("동물 모델", "✅ 로드됨" if st.session_state.animal_svc.is_ready() else "❌ 미로드")
     if st.session_state.plant_svc:
         st.metric("식물 모델", "✅ 로드됨" if st.session_state.plant_svc.is_ready() else "❌ 미로드")
+    if st.session_state.lettuce_svc:
+        st.metric("상추 모델", "✅ 로드됨" if st.session_state.lettuce_svc.is_ready() else "❌ 미로드")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["👤 얼굴 등록", "🔍 얼굴 인식", "🐾 동물 탐지", "🌿 식물 탐지", "📋 인물 목록", "🔴 동물 동영상 테스트"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["👤 얼굴 등록", "🔍 얼굴 인식", "🐾 동물 탐지", "🌿 식물 탐지", "🥬 상추 탐지", "📋 인물 목록", "🔴 동물 동영상 테스트"])
 
 
 # ══════════════════════════════════════════════
@@ -378,9 +388,69 @@ with tab4:
 
 
 # ══════════════════════════════════════════════
-# TAB 5 — 인물 목록
+# TAB 5 — 상추 탐지
 # ══════════════════════════════════════════════
 with tab5:
+    st.header("🥬 상추 병해 탐지")
+    st.caption("상추 전용 Faster R-CNN 모델(기반: best_model_lettuce.pt)."
+               " 탐지 결과는 plant_detection_logs 테이블(crop_type=11)."
+               "에 저장됩니다.")
+    col1, col2 = st.columns(2)
+    with col1:
+        upload = st.file_uploader("이미지 업로드", type=["jpg", "jpeg", "png"], key="lettuce_img")
+    with col2:
+        conf_thr = st.slider("Confidence 임계값", 0.05, 1.0, 0.25, 0.05, key="lettuce_conf")
+
+    if upload and st.button("🥬 탐지 실행", use_container_width=True):
+        import requests as _requests
+        upload.seek(0)
+        img_bytes = upload.read()
+        img_bgr = bytes_to_bgr(io.BytesIO(img_bytes))
+        img_rgb = bgr_to_rgb(img_bgr)
+
+        try:
+            resp = _requests.post(
+                f"{_API_BASE}/api/lettuce/detect",
+                files={"file": (upload.name, img_bytes, "image/jpeg")},
+                params={"conf": conf_thr},
+                timeout=30,
+            )
+            api_result = resp.json() if resp.ok else {}
+        except Exception as e:
+            st.warning(f"FastAPI 호출 실패: {e}")
+            api_result = {}
+
+        detections = api_result.get("detections", [])
+
+        if not detections:
+            st.info("탐지된 상추 병해 없음")
+            st.image(img_rgb, use_container_width=True)
+        else:
+            for det in detections:
+                x1, y1, x2, y2 = det["bbox"]
+                d_label = det.get("disease_label") or det["class_name"]
+                label = f"{d_label} {det['confidence']:.2f}"
+                img_rgb = draw_xyxy(img_rgb, x1, y1, x2, y2, label, color=(34, 180, 80))
+
+            st.image(img_rgb, caption=f"탐지 {len(detections)}개", use_container_width=True)
+            st.dataframe(
+                [
+                    {
+                        "클래스": d["class_name"],
+                        "병해명": d.get("disease_label", ""),
+                        "병해코드": d.get("disease_code", ""),
+                        "confidence": round(d["confidence"], 4),
+                        "bbox": [round(v, 1) for v in d["bbox"]],
+                    }
+                    for d in detections
+                ]
+            )
+
+
+# ══════════════════════════════════════════════
+# TAB 6 — 인물 목록
+# ══════════════════════════════════════════════
+with tab6:
     st.header("등록된 인물 목록")
     if not st.session_state.repo:
         st.warning("사이드바에서 서비스를 먼저 연결하세요.")
@@ -463,7 +533,7 @@ if "canvas_h" not in st.session_state:
 if "canvas_frame_key" not in st.session_state:
     st.session_state.canvas_frame_key = None
 
-with tab6:
+with tab7:
     st.header("🔴 동물 탐지 테스트")
     st.caption("동영상 또는 이미지를 업로드하면 모든 프레임에서 동물을 추론하고 결과 영상을 생성합니다.")
 
@@ -714,7 +784,7 @@ with tab6:
                         _r = _req.post(
                             f"{_API_BASE}/api/animal/logs/batch",
                             json=_payload,
-                            params={"source": "video"},
+                            params={"source": "cam-center-01"},
                             timeout=60,
                         )
                         if _r.ok:
@@ -730,7 +800,7 @@ with tab6:
                     for _d, _sid in zip(det_log, _saved_ids):
                         _img_url = f"{_API_BASE}/api/animal/logs/{_sid}/image" if _sid else None
                         _pub(
-                            source="video",
+                            source="cam-center-01",
                             class_name=_d["클래스"],
                             confidence=_d["confidence"],
                             bbox=_d.get("bbox", []),
