@@ -19,33 +19,38 @@ _KST = timezone(timedelta(hours=9))
 logger = logging.getLogger(__name__)
 
 
-def _post(path: str, body: dict[str, Any]) -> None:
+def _post(path: str, body: dict[str, Any], *, max_retries: int = 2) -> None:
     """내부 공통 POST 헬퍼. 실패 시 예외를 전파하지 않는다."""
     base = settings.RESULT_PUBLISHER_BASE_URL
     if not base:
         return
 
     url = base.rstrip("/") + path
-    try:
-        data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            url=url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=settings.RESULT_PUBLISHER_TIMEOUT) as resp:
-            status = resp.status
-            if status >= 400:
-                logger.warning("Result publisher: server returned %d for %s", status, path)
+    data = json.dumps(body).encode("utf-8")
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            req = urllib.request.Request(
+                url=url,
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=settings.RESULT_PUBLISHER_TIMEOUT) as resp:
+                status = resp.status
+                if status >= 400:
+                    logger.warning("Result publisher: server returned %d for %s", status, path)
+                else:
+                    logger.debug("Result publisher: sent %s → %d", path, status)
+            return  # 성공 시 즉시 종료
+        except (urllib.error.URLError, TimeoutError) as e:
+            if attempt < max_retries:
+                logger.debug("Result publisher: attempt %d/%d failed (%s): %s", attempt, max_retries, path, e)
             else:
-                logger.debug("Result publisher: sent %s → %d", path, status)
-    except urllib.error.URLError as e:
-        logger.warning("Result publisher: connection failed (%s): %s", path, e)
-    except TimeoutError:
-        logger.warning("Result publisher: timeout (%s)", path)
-    except Exception as e:
-        logger.warning("Result publisher: unexpected error (%s): %s", path, e)
+                logger.warning("Result publisher: connection failed after %d attempts (%s): %s", max_retries, path, e)
+        except Exception as e:
+            logger.warning("Result publisher: unexpected error (%s): %s", path, e)
+            return  # 비연결성 예외는 재시도하지 않음
 
 
 def publish_animal_detection(

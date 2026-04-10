@@ -1,6 +1,6 @@
 # DeepFace Live — 프로젝트 현황 보고서
 
-> 최종 업데이트: 2026-04-09  
+> 최종 업데이트: 2026-04-10  
 > 기준 브랜치: `4animals` (로컬)
 
 ---
@@ -57,7 +57,7 @@
                    │ publish_event()
        ┌───────────▼──────────┐
        │  외부 이벤트 서버     │
-       │ 172.16.15.43:8000    │
+       │ (RESULT_PUBLISHER_BASE_URL) │
        └──────────────────────┘
 ```
 
@@ -155,6 +155,22 @@ POST   /api/count/camera/resume                    첫 번째 카메라 재개 (
 
 > **동작**: `POST /api/lettuce/detect` → 콨볳 영역 크롭 → `plant_detection_logs` 저장 (crop_type=11/상추) → 외부 서버 전송  
 > 병해가 있으면 정상(normal) 탐지는 제외하고 병해만 bc0틸.
+
+### 2026-04-10 — app.py UI 개편 / 한글 렌더링 / result_publisher 재시도 / 외부 전송 기본 비활성화
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `app.py` | 동물 탐지 탭(TAB 7) UI를 3열 레이아웃으로 개편 (⚙️설정 / 🔲탐지영역 / 🎬결과). 결과 영상·로그·지표를 `session_state`에 저장 후 `st.rerun()`으로 반영하여 레이아웃 안정화 |
+| `app.py` | `cv2.putText` → PIL `ImageDraw`(`_pil_put_text`) 교체 — 맑은 고딕 등 한글 폰트로 박스 레이블·프레임 정보 렌더링, 반투명 배경 박스 추가 |
+| `app.py` | `cv2.VideoWriter(mp4v)` → **PyAV `libx264`** H.264 인코딩으로 교체 — Chrome 등 브라우저에서 직접 재생 가능한 `mp4` 생성 (`faststart` 플래그) |
+| `app.py` | 폴리곤 설정 위젯을 `expander` → 2열 인라인 레이아웃으로 이동, 비활성화 시 숨김 처리 |
+| `app.py` | 외부 서버 전송(`publish_animal_detection`) 실패 시 `st.warning`으로 알림 — 영상 결과는 정상 표시 |
+| `server/config.py` | `RESULT_PUBLISHER_BASE_URL` 기본값 `"http://172.16.15.43:8000"` → `""` (빈 문자열) 변경 — 미설정 시 외부 전송 자동 비활성화 |
+| `server/services/common/result_publisher.py` | `_post()` 함수에 `max_retries=2` 재시도 로직 추가. 연결 실패(`URLError`/`TimeoutError`)는 재시도, 그 외 예외는 즉시 중단 |
+
+> **참고**: `RESULT_PUBLISHER_BASE_URL`을 빈 문자열로 두면 `_post()` 호출 시 즉시 리턴되어 외부 전송을 건너뜁니다. 실제 운영 환경에서는 `.env`에 명시적으로 설정하세요.
+
+---
 
 ### 2026-04-09 — localhost 하드코딩 제거
 
@@ -269,7 +285,7 @@ PERSON_CAMERA_ID=cam_01
 # 멀티카메라 사용 시 (CAMERAS_JSON 우선 적용)
 # CAMERAS_JSON=[{"camera_id":"cam_01","video_source":"0","label":"정문"}]
 
-RESULT_PUBLISHER_BASE_URL=http://172.16.15.43:8000
+# RESULT_PUBLISHER_BASE_URL=http://172.16.15.43:8000  # 미설정 시 외부 전송 비활성화
 FACE_DB_PATH=face_db
 ```
 

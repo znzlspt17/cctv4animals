@@ -80,8 +80,8 @@ class Settings(BaseSettings):
     # 예) CAMERAS_JSON='[{"camera_id":"cam_01","video_source":"0","label":"정문",...}]'
     CAMERAS_JSON: str = ""
 
-    # Result Publisher — 추론 이벤트 외부 전송
-    RESULT_PUBLISHER_BASE_URL: str = "http://172.16.15.43:8000"
+    # Result Publisher — 추론 이벤트 외부 전송 (빈 문자열이면 전송 비활성화)
+    RESULT_PUBLISHER_BASE_URL: str = ""
     RESULT_PUBLISHER_TIMEOUT: float = 2.0
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}

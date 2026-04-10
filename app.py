@@ -94,19 +94,53 @@ def bgr_to_rgb(img: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
+def _get_korean_font(size: int = 18):
+    """한글 지원 폰트 로드. 없으면 None 반환."""
+    from PIL import ImageFont
+    candidates = [
+        "C:/Windows/Fonts/malgun.ttf",   # 맑은 고딕 (Windows)
+        "C:/Windows/Fonts/NanumGothic.ttf",
+        "C:/Windows/Fonts/gulim.ttc",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return None
+
+
+def _pil_put_text(img_rgb: np.ndarray, text: str, x: int, y: int, color: tuple, font_size: int = 18) -> np.ndarray:
+    """PIL로 한글 포함 텍스트를 img_rgb(numpy)에 그린다."""
+    from PIL import Image as _PilImg, ImageDraw
+    pil = _PilImg.fromarray(img_rgb)
+    draw = ImageDraw.Draw(pil)
+    font = _get_korean_font(font_size)
+    # 배경 반투명 박스
+    if font:
+        bbox = draw.textbbox((x, y), text, font=font)
+    else:
+        bbox = draw.textbbox((x, y), text)
+    pad = 2
+    draw.rectangle([bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad], fill=(0, 0, 0, 160))
+    if font:
+        draw.text((x, y), text, fill=color, font=font)
+    else:
+        draw.text((x, y), text, fill=color)
+    return np.array(pil)
+
+
 def draw_bbox(img_rgb: np.ndarray, x, y, w, h, label: str, color=(0, 200, 0)) -> np.ndarray:
     out = img_rgb.copy()
     cv2.rectangle(out, (int(x), int(y)), (int(x + w), int(y + h)), color, 2)
-    cv2.putText(out, label, (int(x), int(y) - 8),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    out = _pil_put_text(out, label, int(x), max(0, int(y) - 22), color)
     return out
 
 
 def draw_xyxy(img_rgb: np.ndarray, x1, y1, x2, y2, label: str, color=(255, 140, 0)) -> np.ndarray:
     out = img_rgb.copy()
     cv2.rectangle(out, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
-    cv2.putText(out, label, (int(x1), int(y1) - 8),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    out = _pil_put_text(out, label, int(x1), max(0, int(y1) - 22), color)
     return out
 
 
@@ -512,7 +546,18 @@ with tab6:
 
 
 # ══════════════════════════════════════════════
-# TAB 6 — 동물 동영상 테스트
+# TAB 7 — 동물 동영상 테스트
+# ══════════════════════════════════════════════
+# 세션: 폴리곤 꼭지점 기본값
+if "poly_pts" not in st.session_state:
+    st.session_state.poly_pts = [(100, 100), (400, 100), (600, 300),
+                                  (500, 500), (200, 500), (50, 300)]
+
+# ══════════════════════════════════════════════
+
+
+# ══════════════════════════════════════════════
+# TAB 7 — 동물 동영상 테스트
 # ══════════════════════════════════════════════
 # 세션: 폴리곤 꼭지점 기본값
 if "poly_pts" not in st.session_state:
@@ -526,55 +571,24 @@ if "canvas_orig_w" not in st.session_state:
     st.session_state.canvas_orig_w = 640
 if "canvas_orig_h" not in st.session_state:
     st.session_state.canvas_orig_h = 360
-if "canvas_w" not in st.session_state:
-    st.session_state.canvas_w = 640
-if "canvas_h" not in st.session_state:
-    st.session_state.canvas_h = 360
-if "canvas_frame_key" not in st.session_state:
-    st.session_state.canvas_frame_key = None
+# 결과 영속 세션
+if "vt_video_bytes" not in st.session_state:
+    st.session_state.vt_video_bytes = None
+if "vt_det_log" not in st.session_state:
+    st.session_state.vt_det_log = []
+if "vt_metrics" not in st.session_state:
+    st.session_state.vt_metrics = {}
 
 with tab7:
     st.header("🔴 동물 탐지 테스트")
-    st.caption("동영상 또는 이미지를 업로드하면 모든 프레임에서 동물을 추론하고 결과 영상을 생성합니다.")
 
     if not st.session_state.animal_svc:
         st.warning("사이드바에서 서비스를 먼저 연결하세요.")
     else:
         animal_svc = st.session_state.animal_svc
 
-        # ── 입력 방식 선택 ──────────────────────────
-        input_mode = st.radio(
-            "입력 방식",
-            ["🎬 동영상 파일", "🖼️ 이미지 시퀀스"],
-            horizontal=True,
-            key="crossing_mode",
-        )
-
-        video_upload = None
-        imgs_upload = []
-
-        if input_mode == "🎬 동영상 파일":
-            video_upload = st.file_uploader(
-                "동영상 업로드 (.mp4 / .avi / .mov)",
-                type=["mp4", "avi", "mov"],
-                key="crossing_video",
-            )
-        else:
-            imgs_upload = st.file_uploader(
-                "이미지 업로드 (파일명 순서대로 처리됨)",
-                type=["jpg", "jpeg", "png"],
-                accept_multiple_files=True,
-                key="crossing_imgs",
-            )
-
-        _opt1, _opt2 = st.columns(2)
-        conf_crossing = _opt1.slider("Confidence", 0.1, 1.0, 0.4, 0.05, key="crossing_conf")
-        frame_step = int(_opt2.number_input("N프레임마다 처리 (동영상만)", min_value=1, value=5, step=1, key="frame_step"))
-
-        # ── 업로드 즉시 첫 프레임 추출 → 캔버스 배경 캐시 ──────────────────────────
         @st.cache_data(show_spinner=False)
         def _extract_first_frame(file_bytes: bytes, is_video: bool):
-            """파일 바이트에서 첫 프레임을 BGR numpy로 반환. cache_data로 해시 기반 캐시."""
             import tempfile as _tf_mod, os as _os_mod
             if is_video:
                 _tmp = _tf_mod.NamedTemporaryFile(delete=False, suffix=".mp4")
@@ -592,6 +606,42 @@ with tab7:
                 _arr = np.frombuffer(file_bytes, dtype=np.uint8)
                 return cv2.imdecode(_arr, cv2.IMREAD_COLOR)
 
+        # ── 3열 레이아웃 ─────────────────────────────────────────────────
+        col_left, col_mid, col_right = st.columns([3, 3, 4], gap="medium")
+
+        # ══ 1열: 설정 + 실행 ══════════════════════════════════════════════
+        with col_left:
+            st.subheader("⚙️ 설정")
+            input_mode = st.radio(
+                "입력 방식",
+                ["🎬 동영상 파일", "🖼️ 이미지 시퀀스"],
+                horizontal=True,
+                key="crossing_mode",
+            )
+            if input_mode == "🎬 동영상 파일":
+                video_upload = st.file_uploader(
+                    "동영상 (.mp4 / .avi / .mov)",
+                    type=["mp4", "avi", "mov"],
+                    key="crossing_video",
+                )
+                imgs_upload = []
+            else:
+                video_upload = None
+                imgs_upload = st.file_uploader(
+                    "이미지 (파일명 순서대로)",
+                    type=["jpg", "jpeg", "png"],
+                    accept_multiple_files=True,
+                    key="crossing_imgs",
+                )
+
+            conf_crossing = st.slider("Confidence", 0.1, 1.0, 0.4, 0.05, key="crossing_conf")
+            frame_step = int(st.number_input("N프레임마다 처리", min_value=1, value=5, step=1, key="frame_step"))
+            use_poly = st.checkbox("🔲 폴리곤 필터 활성화", value=st.session_state.use_polygon, key="poly_enable")
+            st.session_state.use_polygon = use_poly
+            st.divider()
+            run_crossing = st.button("▶️ 테스트 실행", use_container_width=True, type="primary", key="run_crossing")
+
+        # ── 첫 프레임 추출 (col_mid 그리기 전에 계산) ─────────────────────
         from PIL import Image as _PILImage_pre
         _first_bgr = None
         if input_mode == "🎬 동영상 파일" and video_upload:
@@ -608,64 +658,83 @@ with tab7:
 
         if _first_bgr is not None:
             _oh, _ow = _first_bgr.shape[:2]
-            _cw = min(800, _ow)
+            _cw = min(640, _ow)
             _ch = int(_oh * _cw / _ow)
             _resized_rgb = cv2.resize(bgr_to_rgb(_first_bgr), (_cw, _ch))
             st.session_state.canvas_bg_pil = _PILImage_pre.fromarray(_resized_rgb)
             st.session_state.canvas_orig_w = _ow
             st.session_state.canvas_orig_h = _oh
-            st.session_state.canvas_w = _cw
-            st.session_state.canvas_h = _ch
 
-        # ── 폴리곤 바운더리 설정 (좌표 입력 + 실시간 프리뷰) ──────────────────────────
-        with st.expander("🔲 탐지 영역 — 폴리곤 설정", expanded=st.session_state.use_polygon):
-            use_poly = st.checkbox(
-                "폴리곤 필터 활성화 — 바운딩 박스 중심이 폴리곤 내부일 때만 저장/표시",
-                value=st.session_state.use_polygon,
-                key="poly_enable",
-            )
-            st.session_state.use_polygon = use_poly
-
-            # ── 좌표 입력 (6꼭지점, 3열 레이아웃) ──
-            _bg_frame = st.session_state.canvas_bg_pil  # PIL or None
+        # ══ 2열: 폴리곤 좌표 입력 + 프리뷰 ════════════════════════════════
+        with col_mid:
+            st.subheader("🔲 탐지 영역")
+            _bg_frame = st.session_state.canvas_bg_pil
             _orig_w = st.session_state.canvas_orig_w
             _orig_h = st.session_state.canvas_orig_h
+            _max_x = _orig_w if _orig_w > 0 else 9999
+            _max_y = _orig_h if _orig_h > 0 else 9999
 
-            if _bg_frame is not None:
-                st.caption(f"동영상 첫 프레임 기준 — 프레임 크기: {_orig_w}×{_orig_h}px")
+            if use_poly:
+                st.caption(f"프레임 크기: {_orig_w}×{_orig_h}px — 바운딩박스 중심이 폴리곤 내부만 저장")
+                _new_pts: list[tuple[int, int]] = []
+                for _pi in range(6):
+                    _cur_x, _cur_y = st.session_state.poly_pts[_pi]
+                    _cxa, _cxb, _cxc = st.columns([1, 2, 2])
+                    _cxa.markdown(f"**P{_pi+1}**")
+                    _px = _cxb.number_input("X", min_value=0, max_value=_max_x,
+                                             value=min(_cur_x, _max_x), step=10,
+                                             key=f"px_{_pi}", label_visibility="collapsed")
+                    _py = _cxc.number_input("Y", min_value=0, max_value=_max_y,
+                                             value=min(_cur_y, _max_y), step=10,
+                                             key=f"py_{_pi}", label_visibility="collapsed")
+                    _new_pts.append((int(_px), int(_py)))
+                st.session_state.poly_pts = _new_pts
             else:
-                st.caption("동영상/이미지를 업로드하면 첫 프레임 프리뷰가 표시됩니다.")
+                _new_pts = st.session_state.poly_pts
+                if _bg_frame is None:
+                    st.info("동영상/이미지를 업로드하면\n첫 프레임이 표시됩니다.")
 
-            _new_pts: list[tuple[int, int]] = []
-            _pcols = st.columns(3)
-            for _pi in range(6):
-                _cur_x, _cur_y = st.session_state.poly_pts[_pi]
-                _max_x = _orig_w if _orig_w > 0 else 9999
-                _max_y = _orig_h if _orig_h > 0 else 9999
-                with _pcols[_pi % 3]:
-                    st.markdown(f"**P{_pi+1}**")
-                    _px = st.number_input(f"X", min_value=0, max_value=_max_x, value=min(_cur_x, _max_x), step=10, key=f"px_{_pi}", label_visibility="collapsed")
-                    _py = st.number_input(f"Y", min_value=0, max_value=_max_y, value=min(_cur_y, _max_y), step=10, key=f"py_{_pi}", label_visibility="collapsed")
-                _new_pts.append((int(_px), int(_py)))
-            st.session_state.poly_pts = _new_pts
-
-            # ── 실시간 프리뷰 (첫 프레임 + 폴리곤 오버레이) ──
+            # 프리뷰 이미지
             if _bg_frame is not None:
                 import numpy as _np_prev
-                _prev_arr = _np_prev.array(_bg_frame)  # RGB numpy
-                # 폴리곤 좌표를 표시 해상도로 스케일
-                _cw = _bg_frame.width
-                _ch = _bg_frame.height
-                _sx = _cw / _orig_w
-                _sy = _ch / _orig_h
-                _scaled_pts = [(int(x * _sx), int(y * _sy)) for x, y in _new_pts]
-                _prev_with_poly = draw_polygon_on_frame(_prev_arr, _scaled_pts)
-                st.image(_prev_with_poly, caption="폴리곤 프리뷰 (좌표 변경 시 자동 갱신)", use_container_width=True)
+                _prev_arr = _np_prev.array(_bg_frame)
+                if use_poly:
+                    _sx = _bg_frame.width / _orig_w
+                    _sy = _bg_frame.height / _orig_h
+                    _scaled_pts = [(int(x * _sx), int(y * _sy)) for x, y in _new_pts]
+                    _prev_arr = draw_polygon_on_frame(_prev_arr, _scaled_pts)
+                st.image(_prev_arr, caption="첫 프레임 프리뷰", use_container_width=True)
 
+        # ══ 3열: 결과 (session_state에서 렌더) ════════════════════════════
+        with col_right:
+            st.subheader("🎬 결과")
+            if st.session_state.vt_video_bytes:
+                _m = st.session_state.vt_metrics
+                _mc1, _mc2, _mc3 = st.columns(3)
+                _mc1.metric("탐지 수", _m.get("total_det", 0))
+                _mc2.metric("처리 프레임", _m.get("frames", 0))
+                if _m.get("filtered") is not None:
+                    _mc3.metric("폴리곤 밖 제외", _m["filtered"])
+                st.caption(_m.get("caption", ""))
+                st.video(st.session_state.vt_video_bytes)
+                st.download_button(
+                    "⬇️ 결과 영상 다운로드 (MP4)",
+                    data=st.session_state.vt_video_bytes,
+                    file_name="animal_detection_result.mp4",
+                    mime="video/mp4",
+                    use_container_width=True,
+                    key="dl_video",
+                )
+                if st.session_state.vt_det_log:
+                    _display_log = [
+                        {"프레임": d["프레임"], "클래스": d["클래스"], "conf": d["confidence"]}
+                        for d in st.session_state.vt_det_log
+                    ]
+                    st.dataframe(_display_log, use_container_width=True, height=180)
+            else:
+                st.info("▶️ 실행 버튼을 눌러 추론을 시작하세요.")
 
-        # ── 실행 버튼 ──────────────────────────
-        run_crossing = st.button("▶️ 테스트 실행", use_container_width=True, key="run_crossing")
-
+        # ══ 추론 실행 (버튼 클릭 시, 전체 폭 프로그레스 바) ═════════════════
         if run_crossing:
             _poly_filter = st.session_state.use_polygon
             _poly_pts_run = st.session_state.poly_pts
@@ -719,7 +788,6 @@ with tab7:
                     _det_result = animal_svc.detect(_frame, conf_threshold=conf_crossing)
                     _vis_bgr = _frame.copy()
 
-                    # 폴리곤 오버레이
                     if _poly_filter and _poly_arr is not None:
                         _ov = _vis_bgr.copy()
                         cv2.fillPoly(_ov, [_poly_arr], color=(0, 180, 255))
@@ -728,7 +796,6 @@ with tab7:
 
                     _det_in_frame = 0
                     for _d in _det_result.detections:
-                        # 폴리곤 필터
                         if _poly_filter and not bbox_center_in_polygon(_d.bbox, _poly_pts_run):
                             total_filtered += 1
                             _bx1, _by1, _bx2, _by2 = (int(v) for v in _d.bbox)
@@ -737,11 +804,12 @@ with tab7:
 
                         _bx1, _by1, _bx2, _by2 = (int(v) for v in _d.bbox)
                         cv2.rectangle(_vis_bgr, (_bx1, _by1), (_bx2, _by2), (0, 200, 0), 2)
-                        cv2.putText(_vis_bgr, f"{_d.class_name} {_d.confidence:.2f}",
-                                    (_bx1, _by1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 0), 2)
+                        _vis_rgb_tmp = cv2.cvtColor(_vis_bgr, cv2.COLOR_BGR2RGB)
+                        _vis_rgb_tmp = _pil_put_text(_vis_rgb_tmp, f"{_d.class_name} {_d.confidence:.2f}",
+                                                     _bx1, max(0, _by1 - 22), (0, 200, 0))
+                        _vis_bgr = cv2.cvtColor(_vis_rgb_tmp, cv2.COLOR_RGB2BGR)
                         total_det += 1
                         _det_in_frame += 1
-                        # bbox 영역 크롭 → JPEG base64
                         import base64 as _b64
                         _crop = _frame[max(0, _by1):_by2, max(0, _bx1):_bx2]
                         _img_b64: str | None = None
@@ -757,8 +825,9 @@ with tab7:
                             "image_b64": _img_b64,
                         })
 
-                    cv2.putText(_vis_bgr, f"F:{_fi}  det:{_det_in_frame}", (10, 28),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                    _vis_rgb_tmp = cv2.cvtColor(_vis_bgr, cv2.COLOR_BGR2RGB)
+                    _vis_rgb_tmp = _pil_put_text(_vis_rgb_tmp, f"F:{_fi}  det:{_det_in_frame}", 10, 8, (255, 255, 0))
+                    _vis_bgr = cv2.cvtColor(_vis_rgb_tmp, cv2.COLOR_RGB2BGR)
                     rendered_bgr.append(_vis_bgr)
                     prog_bar.progress((_idx + 1) / len(frames_to_process),
                                       text=f"추론 중… {_idx + 1}/{len(frames_to_process)}")
@@ -769,7 +838,6 @@ with tab7:
                     import requests as _req
                     from server.services.common.result_publisher import publish_animal_detection as _pub
 
-                    # ── ① 내부 DB 저장 (/api/animal/logs/batch) ──────────────────
                     _payload = [
                         {
                             "class_name": d["클래스"],
@@ -796,55 +864,54 @@ with tab7:
                     except Exception as _e:
                         st.warning(f"DB 저장 오류: {_e}")
 
-                    # ── ② 외부 서버 전송 (image_url 포함) ──────────────────────
-                    for _d, _sid in zip(det_log, _saved_ids):
-                        _img_url = f"{_API_BASE}/api/animal/logs/{_sid}/image" if _sid else None
-                        _pub(
-                            source="cam-center-01",
-                            class_name=_d["클래스"],
-                            confidence=_d["confidence"],
-                            bbox=_d.get("bbox", []),
-                            image_url=_img_url,
-                        )
-                    st.toast(f"외부 서버 전송 완료: {len(det_log)}건", icon="✅")
+                    try:
+                        for _d, _sid in zip(det_log, _saved_ids):
+                            _img_url = f"{_API_BASE}/api/animal/logs/{_sid}/image" if _sid else None
+                            _pub(
+                                source="cam-center-01",
+                                class_name=_d["클래스"],
+                                confidence=_d["confidence"],
+                                bbox=_d.get("bbox", []),
+                                image_url=_img_url,
+                            )
+                        st.toast(f"외부 서버 전송 완료: {len(det_log)}건", icon="✅")
+                    except Exception as _pub_e:
+                        st.warning(f"외부 서버 전송 실패 (결과 영상은 정상 표시됩니다): {_pub_e}")
 
-                # ── 결과 표시 ──────────────────────────
-                st.divider()
-                st.subheader("📊 결과")
-                _m1, _m2, _m3 = st.columns(3)
-                _m1.metric("탐지 수 (폴리곤 내)", total_det)
-                _m2.metric("처리 프레임 수", len(frames_to_process))
-                if _poly_filter:
-                    _m3.metric("폴리곤 밖 제외", total_filtered)
-
-                # 영상 생성
+                # 영상 생성 — H.264
                 _h, _w = rendered_bgr[0].shape[:2]
                 _fps_out = max(1, min(30, len(rendered_bgr) // max(1, len(rendered_bgr) // 10)))
                 _tmp_v = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
                 _tmp_v.close()
-                _fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                _writer = cv2.VideoWriter(_tmp_v.name, _fourcc, _fps_out, (_w, _h))
-                for _f in rendered_bgr:
-                    _writer.write(_f)
-                _writer.release()
+
+                import av as _av
+                with _av.open(_tmp_v.name, mode="w", format="mp4") as _av_out:
+                    _av_stream = _av_out.add_stream("libx264", rate=_fps_out)
+                    _av_stream.width = _w
+                    _av_stream.height = _h
+                    _av_stream.pix_fmt = "yuv420p"
+                    _av_stream.options = {"crf": "23", "preset": "fast", "movflags": "faststart"}
+                    for _f in rendered_bgr:
+                        _rgb = cv2.cvtColor(_f, cv2.COLOR_BGR2RGB)
+                        _av_frame = _av.VideoFrame.from_ndarray(_rgb, format="rgb24")
+                        _av_frame = _av_frame.reformat(format="yuv420p")
+                        for _pkt in _av_stream.encode(_av_frame):
+                            _av_out.mux(_pkt)
+                    for _pkt in _av_stream.encode():
+                        _av_out.mux(_pkt)
 
                 with open(_tmp_v.name, "rb") as _vf:
                     _video_bytes = _vf.read()
                 _os.unlink(_tmp_v.name)
 
-                st.subheader("🎬 추론 결과 영상")
-                st.caption(f"{len(rendered_bgr)}프레임 · {_fps_out} fps · {_w}×{_h}")
-                st.video(_video_bytes)
-                st.download_button(
-                    "⬇️ 결과 영상 다운로드 (MP4)",
-                    data=_video_bytes,
-                    file_name="animal_detection_result.mp4",
-                    mime="video/mp4",
-                    use_container_width=True,
-                )
+                # session_state 저장 → rerun으로 col_right에 반영
+                st.session_state.vt_video_bytes = _video_bytes
+                st.session_state.vt_det_log = det_log
+                st.session_state.vt_metrics = {
+                    "total_det": total_det,
+                    "frames": len(frames_to_process),
+                    "filtered": total_filtered if _poly_filter else None,
+                    "caption": f"{len(rendered_bgr)}프레임 · {_fps_out} fps · {_w}×{_h}",
+                }
+                st.rerun()
 
-                if det_log:
-                    st.subheader("📋 탐지 로그")
-                    st.dataframe(det_log, use_container_width=True)
-                else:
-                    st.info("탐지된 동물이 없습니다.")
