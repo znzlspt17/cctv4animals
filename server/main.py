@@ -21,7 +21,6 @@ async def lifespan(app: FastAPI):
     from server.database import Base, engine
 
     Base.metadata.create_all(bind=engine)
-    _ensure_person_seq()
     logger.info("PostgreSQL tables initialized")
 
     # 3) Repository 팩토리 → app.state.repo
@@ -30,28 +29,7 @@ async def lifespan(app: FastAPI):
     app.state.repo = get_repository()
     logger.info("Repository initialized (backend=postgres)")
 
-    # 4) FaceService
-    from server.services.face.face_service import face_service
-
-    face_service.warmup()
-    face_service.load_embedding_cache(app.state.repo)
-    app.state.face_service = face_service
-
-    # 5) CameraManager — 여러 대의 카메라를 동시에 관리
-    from server.config import get_camera_configs
-    from server.services.person.camera_manager import CameraManager
-
-    camera_manager = CameraManager()
-    camera_configs = get_camera_configs()
-    camera_manager.start_all(camera_configs, app.state.repo)
-    app.state.camera_manager = camera_manager
-    logger.info(
-        "CameraManager started: %d camera(s) — %s",
-        len(camera_configs),
-        [c.camera_id for c in camera_configs],
-    )
-
-    # 6) AnimalService
+    # 4) AnimalService
     from server.services.animal.animal_service import animal_service
 
     animal_service.warmup()
@@ -72,22 +50,7 @@ async def lifespan(app: FastAPI):
     logger.info("Server ready.")
     yield
     logger.info("Shutting down...")
-    camera_manager.stop_all()
 
-
-def _ensure_person_seq():
-    """Ensure person_name_seq table has initial row with id=1."""
-    from server.database import SessionLocal
-    from server.models import PersonNameSeq
-
-    db = SessionLocal()
-    try:
-        row = db.query(PersonNameSeq).filter(PersonNameSeq.id == 1).first()
-        if not row:
-            db.add(PersonNameSeq(id=1, next_val=1))
-            db.commit()
-    finally:
-        db.close()
 
 
 app = FastAPI(title="DeepFace Live", lifespan=lifespan)
@@ -120,12 +83,8 @@ async def connection_error_handler(request: Request, exc: ConnectionError):
 
 
 # 라우터 등록
-from server.routers import animal, lettuce, log, person, person_count, plant, recognition  # noqa: E402
+from server.routers import animal, lettuce, plant  # noqa: E402
 
-app.include_router(person.router, prefix="/api")
-app.include_router(log.router, prefix="/api")
-app.include_router(recognition.router, prefix="/api")
-app.include_router(person_count.router, prefix="/api")
 app.include_router(animal.router, prefix="/api")
 app.include_router(plant.router, prefix="/api")
 app.include_router(lettuce.router, prefix="/api")

@@ -106,30 +106,9 @@ def mock_repo():
 
 
 @pytest.fixture
-def mock_face_service():
-    """FaceService mock."""
-    svc = MagicMock()
-    svc.search_face.return_value = []
-    svc.register_face.return_value = {
-        "face_image_id": 1,
-        "person_id": 1,
-        "message": "등록 완료",
-    }
-    svc.register_multi_angle.return_value = {
-        "person_id": 1,
-        "registered": [
-            {"face_image_id": 1, "person_id": 1, "message": "등록 완료"},
-        ],
-        "failed": [],
-    }
-    return svc
-
-
-@pytest.fixture
-def client(mock_repo, mock_face_service):
+def client(mock_repo):
     """TestClient with mocked dependencies injected into app.state."""
     app.state.repo = mock_repo
-    app.state.face_service = mock_face_service
     return TestClient(app, raise_server_exceptions=False)
 
 
