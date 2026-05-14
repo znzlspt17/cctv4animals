@@ -6,18 +6,18 @@
 ## 분석 범위
 - 현재 저장소에서 확인 가능한 자료만 기반으로 정리했다.
 - 확인한 주요 파일:
-  - `/home/runner/work/cctv4animals/cctv4animals/README.md`
-  - `/home/runner/work/cctv4animals/cctv4animals/PROJECT_STATUS.md`
-  - `/home/runner/work/cctv4animals/cctv4animals/pyproject.toml`
-  - `/home/runner/work/cctv4animals/cctv4animals/server/main.py`
-  - `/home/runner/work/cctv4animals/cctv4animals/app.py`
-  - `/home/runner/work/cctv4animals/cctv4animals/server/services/plant/lettuce_service.py`
+  - `README.md`
+  - `PROJECT_STATUS.md`
+  - `pyproject.toml`
+  - `server/main.py`
+  - `app.py`
+  - `server/services/plant/lettuce_service.py`
 - **주의:** 현재 저장소 안에서는 `img2cad`, `WT_FINAL_PJ`라는 이름의 별도 디렉터리/문서/코드를 확인하지 못했다.
-- 따라서 아래 내용은 **현재 저장소 프로젝트(DeepFace Live)** 를 중심으로 정리했고, `img2cad`는 **사용자 설명으로만 확인된 향후 통합 대상 프로젝트** 로 명시한다.
+- 따라서 아래 내용은 **현재 저장소 프로젝트(cctv4animals, 문서상 서비스명: DeepFace Live)** 를 중심으로 정리했고, `img2cad`는 **사용자 설명으로만 확인된 향후 통합 대상 프로젝트** 로 명시한다.
 
 ---
 
-## 1. 프로젝트 A 분석 — 현재 저장소 프로젝트 (DeepFace Live / WT_FINAL_PJ 후보)
+## 1. 프로젝트 A 분석 — 현재 저장소 프로젝트 (cctv4animals / 서비스명 DeepFace Live)
 
 ### 1-1. 프로젝트 한 줄 소개
 - CCTV 기반 영상 데이터를 활용해 **얼굴 인식, 동물 탐지, 식물 병해 탐지, 상추 질병 탐지**를 수행하고, 결과를 저장·조회·전송하는 **실시간 AI 엣지 서버 통합 시스템**이다.
